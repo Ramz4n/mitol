@@ -564,7 +564,8 @@ class Main(tk.Frame):
                                    m.ФИО,
                                    FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
                                    комментарий,
-                                   z.id
+                                   z.id,
+                                   z.Дата_заявки
                             FROM zayavki z
                             JOIN workers w ON z.id_диспетчер = w.id
                             JOIN goroda g ON z.id_город = g.id
@@ -576,7 +577,7 @@ class Main(tk.Frame):
                             order by z.id;''')
             [self.tree.delete(i) for i in self.tree.get_children()]
             for row in cursor.fetchall():
-                if row[-5] == None and row[-1] < int((time.time()) - 86400):
+                if row[-4] == None and row[-1] < int((time.time()) - 86400):
                     self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
                 else:
                     self.tree.insert('', 'end', values=tuple(row))
@@ -739,7 +740,8 @@ class Main(tk.Frame):
                                    m.ФИО,
                                    FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
                                    комментарий,
-                                   z.id
+                                   z.id,
+                                   z.дата_заявки
                             FROM zayavki z
                             JOIN workers w ON z.id_диспетчер = w.id
                             JOIN goroda g ON z.id_город = g.id
@@ -753,7 +755,7 @@ class Main(tk.Frame):
                            (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}',))
             [self.tree.delete(i) for i in self.tree.get_children()]
             for row in cursor.fetchall():
-                if row[-5] == None and row[-1] < int((time.time()) - 86400):
+                if row[-4] == None and row[-1] < int((time.time()) - 86400):
                     self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
                 else:
                     self.tree.insert('', 'end', values=tuple(row))
