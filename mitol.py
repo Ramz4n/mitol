@@ -1249,7 +1249,6 @@ class Search(tk.Toplevel):
 
     def init_search(self):
         self.title('Поиск')
-        print('hello git')
         self.geometry('600x350+400+300')
         self.resizable(False, False)
         self.wm_attributes('-topmost', 1)
