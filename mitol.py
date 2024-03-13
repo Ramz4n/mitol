@@ -163,7 +163,7 @@ class Main(tk.Frame):
         self.listbox7.pack(side=tk.TOP, expand=True)
         with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
             cursor = connection2.cursor(dictionary=True)
-            cursor.execute("select id, ФИО from workers where Должность = 'Механик'")
+            cursor.execute("select id, ФИО from workers where Должность = 'Механик' order by ФИО")
             self.data_meh = cursor.fetchall()
         for d in self.data_meh:
             self.data_meh_name = f"{d['ФИО']}"
@@ -290,7 +290,7 @@ class Main(tk.Frame):
                 JOIN street ON goroda.id = street.город_id
                 JOIN doma ON street.id = doma.улица_id
                 JOIN padik ON doma.id = padik.дом_id
-                WHERE goroda.город = "{self.selected_city}"''')
+                WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
             self.data_streets = cursor.fetchall()
             for d in self.data_streets:
                 self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
@@ -862,7 +862,7 @@ class Main(tk.Frame):
                 JOIN doma ON street.id = doma.улица_id
                 JOIN padik ON doma.id = padik.дом_id
                 JOIN goroda ON street.город_id = goroda.id
-                WHERE goroda.город = "{self.selected_city}"''')
+                WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
             data_streets = cursor.fetchall()
             for d in data_streets:
                 address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
@@ -905,7 +905,7 @@ class Main(tk.Frame):
                         JOIN street ON lifts.id_улица = street.id
                         JOIN goroda ON lifts.id_город = goroda.id
                         WHERE goroda.город = "{self.selected_city}" AND street.улица = "{street}"
-                        and doma.номер = "{house}" and padik.номер = "{entrance}"''')
+                        and doma.номер = "{house}" and padik.номер = "{entrance}" order BY street.улица, doma.`номер`, padik.`номер`''')
             data_lifts = cursor.fetchall()
             for lift in data_lifts:
                 lift_str = f"{lift['тип_лифта']}"
@@ -1308,7 +1308,7 @@ class Search(tk.Toplevel):
                 JOIN street ON goroda.id = street.город_id
                 JOIN doma ON street.id = doma.улица_id
                 JOIN padik ON doma.id = padik.дом_id
-                WHERE goroda.город = "{self.selected_city}"''')
+                WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
             self.data_streets = cursor.fetchall()
             for d in self.data_streets:
                 self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
@@ -1351,7 +1351,7 @@ class Search(tk.Toplevel):
                 JOIN street ON goroda.id = street.город_id
                 JOIN doma ON street.id = doma.улица_id
                 JOIN padik ON doma.id = padik.дом_id
-                WHERE goroda.город = "{self.selected_city}"''')
+                WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
             self.data_streets = cursor.fetchall()
             for d in self.data_streets:
                 self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
@@ -1374,7 +1374,7 @@ class Search(tk.Toplevel):
                 JOIN street ON goroda.id = street.город_id
                 JOIN doma ON street.id = doma.улица_id
                 JOIN padik ON doma.id = padik.дом_id
-                WHERE goroda.город = "{self.selected_city}"''')
+                WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
             self.data_streets = cursor.fetchall()
             for d in self.data_streets:
                 self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"  # Парсим адреса из файла
