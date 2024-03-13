@@ -615,28 +615,30 @@ class Main(tk.Frame):
     def open_bd_to_excel(self):
         if self.tree.selection():
             selected_items = self.tree.selection()
-            selected_ids = [self.tree.item(item, 'values')[0] for item in selected_items]
-            selected_adress = [self.tree.item(item, 'values')[4] for item in selected_items]
-            selected_data = [self.tree.item(item, 'values')[1] for item in selected_items]
-            # Соединяем значения в переменные строк с разделителями
-            selected_adress_str = ', '.join([f'"{adress}"' for adress in selected_adress])
-            selected_data_str = ', '.join([f'"{data}"' for data in selected_data])
+            selected_ids = [self.tree.item(item, 'values')[-1] for item in selected_items]
+            selected_id_str = ', '.join([f'"{id}"' for id in selected_ids])
             conn = pymysql.connect(user=user, password=password, host=host, port=port, database=database)
             cursor = conn.cursor()
             # Обновленный SQL запрос с корректной фильтрацией
-            sql_query = f'''SELECT Номер_заявки,
-                                    FROM_UNIXTIME(Дата_заявки, '%d.%m.%Y, %H:%i') as Дата_заявки,
-                                    Диспетчер,
-                                    Город,
-                                    Адрес,
-                                    Тип_лифта,
-                                    Причина,
-                                    ФИО_механика,
-                                    FROM_UNIXTIME(Дата_запуска, '%d.%m.%Y, %H:%i') as Дата_запуска,
-                                    Комментарий 
-                                    FROM {table_zayavki} 
-                                    WHERE Адрес IN ({selected_adress_str})
-                                    AND FROM_UNIXTIME(Дата_заявки, '%d.%m.%Y, %H:%i') IN ({selected_data_str})'''
+            sql_query = f'''SELECT z.Номер_заявки,
+                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                   w.ФИО AS Диспетчер,
+                                   g.город AS Город,
+                                   CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
+                                   тип_лифта,
+                                   причина,
+                                   m.ФИО,
+                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                   комментарий,
+                                   z.id
+                            FROM zayavki z
+                            JOIN workers w ON z.id_диспетчер = w.id
+                            JOIN goroda g ON z.id_город = g.id
+                            JOIN street s ON z.id_улица = s.id
+                            JOIN doma d ON z.id_дом = d.id
+                            JOIN padik p ON z.id_подъезд = p.id
+                            JOIN workers m ON z.id_механик = m.id 
+                                    WHERE z.id in ({selected_id_str})'''
             cursor.execute(sql_query)
             data = cursor.fetchall()
             df = pd.DataFrame(data, columns=[i[0] for i in cursor.description])
@@ -647,7 +649,7 @@ class Main(tk.Frame):
             subprocess.call("данные.xlsx", shell=True)
         else:
             msg = f"Нужно выбрать строку(и), которые нужно вставить в excel"
-            mb.showinfo("Ошибка!", msg)
+            mb.showerror("Ошибка!", msg)
 
     # ===РЕДАКТИРОВАНИЕ ДАННЫХ В БД===================================================================
     def update_record(self, data, dispetcher, town, street, house, padik, type_lift, prichina, fio_meh, date_to_go, comment):
