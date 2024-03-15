@@ -616,7 +616,7 @@ class Main(tk.Frame):
     def open_bd_to_excel(self):
         if self.tree.selection():
             selected_items = self.tree.selection()
-            selected_ids = [self.tree.item(item, 'values')[-1] for item in selected_items]
+            selected_ids = [self.tree.item(item, 'values')[-2] for item in selected_items]
             selected_id_str = ', '.join([f'"{id}"' for id in selected_ids])
             conn = pymysql.connect(user=user, password=password, host=host, port=port, database=database)
             cursor = conn.cursor()
@@ -626,11 +626,11 @@ class Main(tk.Frame):
                                    w.ФИО AS Диспетчер,
                                    g.город AS Город,
                                    CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                   тип_лифта,
-                                   причина,
-                                   m.ФИО,
+                                   Тип_лифта,
+                                   Причина,
+                                   m.ФИО as Механик,
                                    FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
-                                   комментарий,
+                                   Комментарий,
                                    z.id
                             FROM zayavki z
                             JOIN workers w ON z.id_диспетчер = w.id
