@@ -27,6 +27,7 @@ import json
 from openpyxl import load_workbook
 import pymysql
 import sys
+import sqlite3
 
 
 class Main(tk.Frame):
@@ -58,11 +59,14 @@ class Main(tk.Frame):
         except:
             mb.showerror("Ошибка","Нет подключения к базе данных")
             sys.exit()
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute('''select w.ФИО from zayavki z
-            JOIN workers w ON z.id_диспетчер = w.id ORDER BY z.id DESC LIMIT 1''')
-            data_worker = cursor.fetchone()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute('''select w.ФИО from zayavki z
+                JOIN workers w ON z.id_диспетчер = w.id ORDER BY z.id DESC LIMIT 1''')
+                data_worker = cursor.fetchone()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.disp_to_id = {i['ФИО'] for i in data_workers}
         first_element = next(iter(self.disp_to_id), None)
         print(first_element)
@@ -89,10 +93,13 @@ class Main(tk.Frame):
         toolbar4 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
         toolbar4.pack(side=tk.LEFT, fill=tk.Y)
         # Получить данные из базы
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute("select id, город from goroda")
-            data_towns = cursor.fetchall()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute("select id, город from goroda")
+                data_towns = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         # Установить значение по умолчанию
         default_town = data_towns[0] if data_towns else ''
         self.var2 = tk.StringVar(value=default_town)
@@ -161,10 +168,13 @@ class Main(tk.Frame):
         self.listbox7 = tk.Listbox(toolbar9, width=21, listvariable=self.listbox_values7, font='Calibri 12')
         self.listbox7.bind('<<ListboxSelect>>', self.on_change_selection_fio)
         self.listbox7.pack(side=tk.TOP, expand=True)
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute("select id, ФИО from workers where Должность = 'Механик' order by ФИО")
-            self.data_meh = cursor.fetchall()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute("select id, ФИО from workers where Должность = 'Механик' order by ФИО")
+                self.data_meh = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         for d in self.data_meh:
             self.data_meh_name = f"{d['ФИО']}"
             self.data_meh_id = f"{d['id']}"
@@ -191,6 +201,9 @@ class Main(tk.Frame):
         btn_refresh = tk.Button(tool3, text='Остановленные лифты', bg='#FFB3AB', compound=tk.TOP,command=self.stop_lift, width=19, font=helv36)
         btn_refresh.pack(side=tk.TOP)
         btn_refresh = tk.Button(tool3, text='НЕ Закрытые заявки', bg='#FFC830', compound=tk.TOP,command=self.non_start_lift, width=19, font=helv36)
+        btn_refresh.pack(side=tk.BOTTOM)
+        btn_refresh = tk.Button(tool3, text='Старый журнал', bg='#d7d8e0', compound=tk.TOP,
+                                command=self.view_records_old, width=19, font=helv36)
         btn_refresh.pack(side=tk.BOTTOM)
         # === ПЕРЕЛИСТЫВАНИЕ БД ПО МЕСЯЦАМ=====================================================================
         self.months = ["Январь", "Февраль", "Март", "Апрель",
@@ -271,6 +284,48 @@ class Main(tk.Frame):
         self.scrollbar.pack(side="bottom", fill="both")
         self.tree.pack(side="left", fill="both")
         self.on_select_city()
+
+    def view_records_old(self):
+        # Добавьте стиль и конфигурацию тега
+        self.current_month_index = int((datetime.datetime.now(tz=None)).strftime("%m")) - 1
+        self.current_year_index = int((datetime.datetime.now(tz=None)).strftime("%Y"))
+        self.month_label.config(text=self.months[(self.current_month_index) % 12])
+        self.year_label.config(text=self.current_year_index)
+        self.tree.tag_configure("Red.Treeview", foreground="red")
+        self.tree.tag_configure("Yellow.Treeview", foreground="yellow")
+        date_obj = datetime.datetime.now()
+        formatted_date = date_obj.strftime('%Y-%m-%d')
+        try:
+            with closing(sqlite3.connect('mitol.db')) as connection2:
+                cursor = connection2.cursor()
+                cursor.execute('''SELECT Номер_заявки,
+                                    strftime('%d.%m.%Y, %H:%M', datetime(Дата_заявки, 'unixepoch')) AS Дата_заявки2,
+                                    Диспетчер,
+                                    Город,
+                                    Адрес,
+                                    Тип_лифта,
+                                    Причина,
+                                    ФИО_механика,
+                                    COALESCE(strftime('%d.%m.%Y, %H:%M', datetime(Дата_запуска, 'unixepoch')), '') AS Дата_запуска2,
+                                    Комментарий,
+                                    id,
+                                    Дата_запуска - Дата_заявки AS Разница,
+                                    Дата_заявки
+                                    FROM balash
+                                  WHERE Город<>"Балашиха" and strftime('%m', datetime(Дата_заявки, 'unixepoch')) = ?
+                                  and strftime('%Y', datetime(Дата_заявки, 'unixepoch')) = ?''',
+                               (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}',))
+                [self.tree.delete(i) for i in self.tree.get_children()]
+                for row in cursor.fetchall():
+                    if row[-5] == "" and row[-1] < int((time.time() + 3 * 60 * 60) - 86400):
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
+                    else:
+                        self.tree.insert('', 'end', values=tuple(row))
+                self.tree.yview_moveto(1.0)
+                connection2.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+        self.print_info(formatted_date)
 #ФУНКЦИЯ ПО ПОЛУЧЕНИЮ ГОРОДА И ДАЛЬНЕЙШЕМУ ПАРСИНГУ АДРЕСОВ В ОКОШКО ПО ГОРОДАМ
     def on_select_city(self, *args):
         selected_city_str = eval(self.var2.get())
@@ -279,22 +334,25 @@ class Main(tk.Frame):
         # Очистить Listbox перед добавлением новых улиц
         self.listbox.delete(0, tk.END)
         self.listbox_type.delete(0, tk.END)
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute(f'''
-                SELECT goroda.id as goroda_id, goroda.город, 
-                street.id as street_id, street.улица, 
-                doma.id as doma_id, doma.номер as дом, 
-                padik.id as padik_id, padik.номер as подъезд
-                FROM goroda
-                JOIN street ON goroda.id = street.город_id
-                JOIN doma ON street.id = doma.улица_id
-                JOIN padik ON doma.id = padik.дом_id
-                WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
-            self.data_streets = cursor.fetchall()
-            for d in self.data_streets:
-                self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
-                self.listbox.insert(tk.END, self.address_str)
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute(f'''
+                    SELECT goroda.id as goroda_id, goroda.город, 
+                    street.id as street_id, street.улица, 
+                    doma.id as doma_id, doma.номер as дом, 
+                    padik.id as padik_id, padik.номер as подъезд
+                    FROM goroda
+                    JOIN street ON goroda.id = street.город_id
+                    JOIN doma ON street.id = doma.улица_id
+                    JOIN padik ON doma.id = padik.дом_id
+                    WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
+                self.data_streets = cursor.fetchall()
+                for d in self.data_streets:
+                    self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
+                    self.listbox.insert(tk.END, self.address_str)
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
     def show_menu(self, event):
         # Создаем меню
@@ -314,29 +372,32 @@ class Main(tk.Frame):
     # ===РЕДАКТИРОВАТЬ========================================================================
     def edit(self, event):
         if self.tree.selection():
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-                cursor = connection2.cursor(dictionary=True)
-                cursor.execute(f'''SELECT z.id,
-                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
-                                   w.ФИО AS Диспетчер,
-                                   g.город AS Город,
-                                   CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                   тип_лифта,
-                                   причина,
-                                   m.ФИО,
-                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS дата_запуска,
-                                   комментарий
-                            FROM zayavki z
-                            JOIN workers w ON z.id_диспетчер = w.id
-                            JOIN goroda g ON z.id_город = g.id
-                            JOIN street s ON z.id_улица = s.id
-                            JOIN doma d ON z.id_дом = d.id
-                            JOIN padik p ON z.id_подъезд = p.id
-                            JOIN workers m ON z.id_механик = m.id
-                                 where z.id=?''',
-                               (self.tree.set(self.tree.selection()[0], '#1'),))
-                rows = cursor.fetchall()
-                Child(rows)
+            try:
+                with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                    cursor = connection2.cursor(dictionary=True)
+                    cursor.execute(f'''SELECT z.id,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                       w.ФИО AS Диспетчер,
+                                       g.город AS Город,
+                                       CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
+                                       тип_лифта,
+                                       причина,
+                                       m.ФИО,
+                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS дата_запуска,
+                                       комментарий
+                                FROM zayavki z
+                                JOIN workers w ON z.id_диспетчер = w.id
+                                JOIN goroda g ON z.id_город = g.id
+                                JOIN street s ON z.id_улица = s.id
+                                JOIN doma d ON z.id_дом = d.id
+                                JOIN padik p ON z.id_подъезд = p.id
+                                JOIN workers m ON z.id_механик = m.id
+                                     where z.id=?''',
+                                   (self.tree.set(self.tree.selection()[0], '#1'),))
+                    rows = cursor.fetchall()
+                    Child(rows)
+            except mariadb.Error as e:
+                showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         else:
             mb.showerror("Ошибка","Строка для редактирования не выбрана")
             return
@@ -347,22 +408,28 @@ class Main(tk.Frame):
         time_obj = datetime.datetime.strptime(date_, time_format)
         unix_time = int(time_obj.timestamp())
         if self.tree.selection():
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-                cursor = connection2.cursor()
-                cursor.execute(f'''SELECT Дата_запуска from {table_zayavki} WHERE id=?''',
-                               [self.tree.set(self.tree.selection()[0], '#11')])
-                info = cursor.fetchone()
-                connection2.commit()
-                if info[0] is None:
-                    with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-                        cursor = connection2.cursor()
-                        cursor.execute(
-                            f'''UPDATE {table_zayavki} set Дата_запуска=? WHERE ID=?''',
-                            [unix_time, self.tree.set(self.tree.selection()[0], '#11')])
-                        connection2.commit()
-                else:
-                    mb.showerror("Ошибка","Строка со временем уже заполнена")
-                    return
+            try:
+                with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                    cursor = connection2.cursor()
+                    cursor.execute(f'''SELECT Дата_запуска from {table_zayavki} WHERE id=?''',
+                                   [self.tree.set(self.tree.selection()[0], '#11')])
+                    info = cursor.fetchone()
+                    connection2.commit()
+                    if info[0] is None:
+                        try:
+                            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                                cursor = connection2.cursor()
+                                cursor.execute(
+                                    f'''UPDATE {table_zayavki} set Дата_запуска=? WHERE ID=?''',
+                                    [unix_time, self.tree.set(self.tree.selection()[0], '#11')])
+                                connection2.commit()
+                        except mariadb.Error as e:
+                            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+                    else:
+                        mb.showerror("Ошибка","Строка со временем уже заполнена")
+                        return
+            except mariadb.Error as e:
+                showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         else:
             mb.showerror(
                 "Ошибка",
@@ -377,11 +444,14 @@ class Main(tk.Frame):
         if self.tree.selection():
             result = askyesno(title="Подтвержение операции", message="УДАЛИТЬ строчку?")
             if result:
-                with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-                    cursor = connection2.cursor()
-                    cursor.execute(f'''delete from {table_zayavki} WHERE ID=?''',
-                                   [self.tree.set(self.tree.selection()[0], '#11')])
-                    connection2.commit()
+                try:
+                    with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                        cursor = connection2.cursor()
+                        cursor.execute(f'''delete from {table_zayavki} WHERE ID=?''',
+                                       [self.tree.set(self.tree.selection()[0], '#11')])
+                        connection2.commit()
+                except mariadb.Error as e:
+                    showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
             else:
                 showinfo("Результат", "Операция отменена")
         else:
@@ -399,11 +469,14 @@ class Main(tk.Frame):
         time_obj = datetime.datetime.strptime(date_, time_format)
         unix_time = int(time_obj.timestamp())
         if self.tree.selection():
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-                cursor = connection2.cursor()
-                cursor.execute(f'''UPDATE {table_zayavki} set Дата_запуска=?, Комментарий=? WHERE ID=?''',
-                               [unix_time, 'Ложная заявка', self.tree.set(self.tree.selection()[0], '#11')])
-                connection2.commit()
+            try:
+                with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                    cursor = connection2.cursor()
+                    cursor.execute(f'''UPDATE {table_zayavki} set Дата_запуска=?, Комментарий=? WHERE ID=?''',
+                                   [unix_time, 'Ложная заявка', self.tree.set(self.tree.selection()[0], '#11')])
+                    connection2.commit()
+            except mariadb.Error as e:
+                showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         else:
             mb.showerror("Ошибка","Строка не выбрана")
             return
@@ -457,8 +530,7 @@ class Main(tk.Frame):
                         self.tree.insert('', 'end', values=tuple(row))
                 connection.commit()
         except mariadb.Error as e:
-            msg = f"Ошибка БД! {e}"
-            mb.showinfo("Ошибка при работе с базой данных:", msg)
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
     # Function to update the label text backward
     def update_backward(self):
@@ -499,124 +571,136 @@ class Main(tk.Frame):
                         self.tree.insert('', 'end', values=tuple(row))
                 connection.commit()
         except mariadb.Error as e:
-            print("Ошибка при работе с базой данных:", e)
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
     def print_info(self, event):
         self.selected_date = self.calendar.get_date()
         self.selected_date_str = self.selected_date.strftime('%d.%m.%Y')
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
-            cursor = connection.cursor()
-            cursor.execute(f'''SELECT g.город as Город,
-                                SUM(CASE WHEN z.Причина = 'Застревание' THEN 1 ELSE 0 END) as Застр,
-                                SUM(CASE WHEN z.Причина IN ('Остановлен', 'Неисправность') THEN 1 ELSE 0 END) as Неиспр,
-                                SUM(CASE WHEN z.Причина IN ('Остановлен', 'Неисправность', 'Застревание') THEN 1 ELSE 0 END) as Кол_во
-                                FROM zayavki z
-                                JOIN goroda g ON z.id_город = g.id
-                                WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%d.%m.%Y') = ?
-                                GROUP BY Город;''',
-            (self.selected_date_str,))
-            [self.tree2.delete(i) for i in self.tree2.get_children()]
-            [self.tree2.insert('', 'end', values=row) for row in cursor.fetchall()]
-            connection.commit()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
+                cursor = connection.cursor()
+                cursor.execute(f'''SELECT g.город as Город,
+                                    SUM(CASE WHEN z.Причина = 'Застревание' THEN 1 ELSE 0 END) as Застр,
+                                    SUM(CASE WHEN z.Причина IN ('Остановлен', 'Неисправность') THEN 1 ELSE 0 END) as Неиспр,
+                                    SUM(CASE WHEN z.Причина IN ('Остановлен', 'Неисправность', 'Застревание') THEN 1 ELSE 0 END) as Кол_во
+                                    FROM zayavki z
+                                    JOIN goroda g ON z.id_город = g.id
+                                    WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%d.%m.%Y') = ?
+                                    GROUP BY Город;''',
+                (self.selected_date_str,))
+                [self.tree2.delete(i) for i in self.tree2.get_children()]
+                [self.tree2.insert('', 'end', values=row) for row in cursor.fetchall()]
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
     # ===ОСТАНОВЛЕННЫЕ ЛИФТЫ==================================================================================
     def stop_lift(self):
         self.tree.tag_configure("Red.Treeview", foreground="red")
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
-            cursor = connection.cursor()
-            cursor.execute(f'''SELECT z.Номер_заявки,
-                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
-                                   w.ФИО AS Диспетчер,
-                                   g.город AS Город,
-                                   CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                   тип_лифта,
-                                   причина,
-                                   m.ФИО,
-                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
-                                   комментарий,
-                                   z.id
-                            FROM zayavki z
-                            JOIN workers w ON z.id_диспетчер = w.id
-                            JOIN goroda g ON z.id_город = g.id
-                            JOIN street s ON z.id_улица = s.id
-                            JOIN doma d ON z.id_дом = d.id
-                            JOIN padik p ON z.id_подъезд = p.id
-                            JOIN workers m ON z.id_механик = m.id
-                            WHERE Причина="Остановлен"
-                            and Дата_запуска is Null
-                            order by z.id;''')
-            [self.tree.delete(i) for i in self.tree.get_children()]
-            for row in cursor.fetchall():
-                self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
-                connection.commit()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
+                cursor = connection.cursor()
+                cursor.execute(f'''SELECT z.Номер_заявки,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                       w.ФИО AS Диспетчер,
+                                       g.город AS Город,
+                                       CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
+                                       тип_лифта,
+                                       причина,
+                                       m.ФИО,
+                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                       комментарий,
+                                       z.id
+                                FROM zayavki z
+                                JOIN workers w ON z.id_диспетчер = w.id
+                                JOIN goroda g ON z.id_город = g.id
+                                JOIN street s ON z.id_улица = s.id
+                                JOIN doma d ON z.id_дом = d.id
+                                JOIN padik p ON z.id_подъезд = p.id
+                                JOIN workers m ON z.id_механик = m.id
+                                WHERE Причина="Остановлен"
+                                and Дата_запуска is Null
+                                order by z.id;''')
+                [self.tree.delete(i) for i in self.tree.get_children()]
+                for row in cursor.fetchall():
+                    self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
+                    connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
     # ===НЕ ЗАКРЫТЫЕ ЗАЯВКИ==================================================================================
     def non_start_lift(self):
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor()
-            cursor.execute(f'''SELECT z.Номер_заявки,
-                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
-                                   w.ФИО AS Диспетчер,
-                                   g.город AS Город,
-                                   CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                   тип_лифта,
-                                   причина,
-                                   m.ФИО,
-                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
-                                   комментарий,
-                                   z.id,
-                                   z.Дата_заявки
-                            FROM zayavki z
-                            JOIN workers w ON z.id_диспетчер = w.id
-                            JOIN goroda g ON z.id_город = g.id
-                            JOIN street s ON z.id_улица = s.id
-                            JOIN doma d ON z.id_дом = d.id
-                            JOIN padik p ON z.id_подъезд = p.id
-                            JOIN workers m ON z.id_механик = m.id
-                            WHERE Дата_запуска is Null and Причина<>"Остановлен"
-                            order by z.id;''')
-            [self.tree.delete(i) for i in self.tree.get_children()]
-            for row in cursor.fetchall():
-                if row[-4] == None and row[-1] < int((time.time()) - 86400):
-                    self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
-                else:
-                    self.tree.insert('', 'end', values=tuple(row))
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor()
+                cursor.execute(f'''SELECT z.Номер_заявки,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                       w.ФИО AS Диспетчер,
+                                       g.город AS Город,
+                                       CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
+                                       тип_лифта,
+                                       причина,
+                                       m.ФИО,
+                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                       комментарий,
+                                       z.id,
+                                       z.Дата_заявки
+                                FROM zayavki z
+                                JOIN workers w ON z.id_диспетчер = w.id
+                                JOIN goroda g ON z.id_город = g.id
+                                JOIN street s ON z.id_улица = s.id
+                                JOIN doma d ON z.id_дом = d.id
+                                JOIN padik p ON z.id_подъезд = p.id
+                                JOIN workers m ON z.id_механик = m.id
+                                WHERE Дата_запуска is Null and Причина<>"Остановлен"
+                                order by z.id;''')
+                [self.tree.delete(i) for i in self.tree.get_children()]
+                for row in cursor.fetchall():
+                    if row[-4] == None and row[-1] < int((time.time()) - 86400):
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
+                    else:
+                        self.tree.insert('', 'end', values=tuple(row))
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
     # ===ЗАПУЩЕННЫЕ ЛИФТЫ==================================================================================
     def start_lift(self):
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
-            cursor = connection.cursor()
-            cursor.execute(f'''SELECT z.Номер_заявки,
-                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
-                                   w.ФИО AS Диспетчер,
-                                   g.город AS Город,
-                                   CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                   тип_лифта,
-                                   причина,
-                                   m.ФИО,
-                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
-                                   комментарий,
-                                   z.id
-                            FROM zayavki z
-                            JOIN workers w ON z.id_диспетчер = w.id
-                            JOIN goroda g ON z.id_город = g.id
-                            JOIN street s ON z.id_улица = s.id
-                            JOIN doma d ON z.id_дом = d.id
-                            JOIN padik p ON z.id_подъезд = p.id
-                            JOIN workers m ON z.id_механик = m.id
-                            where Причина="Остановлен" 
-                            and Дата_запуска is not Null
-                            order by z.id;''')
-            [self.tree.delete(i) for i in self.tree.get_children()]
-            for row in cursor.fetchall():
-                self.tree.insert('', 'end', values=row)
-            connection.commit()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
+                cursor = connection.cursor()
+                cursor.execute(f'''SELECT z.Номер_заявки,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                       w.ФИО AS Диспетчер,
+                                       g.город AS Город,
+                                       CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
+                                       тип_лифта,
+                                       причина,
+                                       m.ФИО,
+                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                       комментарий,
+                                       z.id
+                                FROM zayavki z
+                                JOIN workers w ON z.id_диспетчер = w.id
+                                JOIN goroda g ON z.id_город = g.id
+                                JOIN street s ON z.id_улица = s.id
+                                JOIN doma d ON z.id_дом = d.id
+                                JOIN padik p ON z.id_подъезд = p.id
+                                JOIN workers m ON z.id_механик = m.id
+                                where Причина="Остановлен" 
+                                and Дата_запуска is not Null
+                                order by z.id;''')
+                [self.tree.delete(i) for i in self.tree.get_children()]
+                for row in cursor.fetchall():
+                    self.tree.insert('', 'end', values=row)
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
     # ===Открытие файла excel================================================================
     def open_bd_to_excel(self):
         if self.tree.selection():
             selected_items = self.tree.selection()
-            selected_ids = [self.tree.item(item, 'values')[-2] for item in selected_items]
+            selected_ids = [self.tree.item(item, 'values')[-1] for item in selected_items]
             selected_id_str = ', '.join([f'"{id}"' for id in selected_ids])
             conn = pymysql.connect(user=user, password=password, host=host, port=port, database=database)
             cursor = conn.cursor()
@@ -649,7 +733,7 @@ class Main(tk.Frame):
             df.to_excel('данные.xlsx', index=False)
             subprocess.call("данные.xlsx", shell=True)
         else:
-            msg = f"Нужно выбрать строку(и), которые нужно вставить в excel"
+            msg = f"Нужно выделить одну или несколько строк, которые нужно вставить в excel"
             mb.showerror("Ошибка!", msg)
 
     # ===РЕДАКТИРОВАНИЕ ДАННЫХ В БД===================================================================
@@ -679,40 +763,46 @@ class Main(tk.Frame):
             msg = "Введите дату в формате ДД.ММ.ГГГГ, ЧЧ:ММ или нажмите на нужную заявку, а потом на кнопку 'Отметить время'"
             mb.showerror("Ошибка", msg)
             return
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
-            cursor = connection.cursor()
-            cursor.execute(f'''UPDATE zayavki z
-                                JOIN workers w_disp ON z.id_Диспетчер = w_disp.id
-                                JOIN goroda g ON z.id_город = g.id
-                                JOIN street s ON z.id_улица = s.id
-                                JOIN doma d ON z.id_дом = d.id
-                                JOIN padik p ON z.id_подъезд = p.id
-                                JOIN workers w_mech ON z.id_Механик = w_mech.id
-                                SET z.Дата_заявки = ?, 
-                                    z.id_Диспетчер = ?, 
-                                    z.id_город = ?, 
-                                    z.id_улица = ?, 
-                                    z.id_дом = ?, 
-                                    z.id_подъезд = ?, 
-                                    z.тип_лифта = ?, 
-                                    z.Причина = ?, 
-                                    z.id_Механик = ?, 
-                                    z.Дата_запуска = ?, 
-                                    z.Комментарий = ?
-                                WHERE z.ID = ?;''',
-                           (val1 + (self.tree.set(self.tree.selection()[0], '#11'),)))
-            connection.commit()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
+                cursor = connection.cursor()
+                cursor.execute(f'''UPDATE zayavki z
+                                    JOIN workers w_disp ON z.id_Диспетчер = w_disp.id
+                                    JOIN goroda g ON z.id_город = g.id
+                                    JOIN street s ON z.id_улица = s.id
+                                    JOIN doma d ON z.id_дом = d.id
+                                    JOIN padik p ON z.id_подъезд = p.id
+                                    JOIN workers w_mech ON z.id_Механик = w_mech.id
+                                    SET z.Дата_заявки = ?, 
+                                        z.id_Диспетчер = ?, 
+                                        z.id_город = ?, 
+                                        z.id_улица = ?, 
+                                        z.id_дом = ?, 
+                                        z.id_подъезд = ?, 
+                                        z.тип_лифта = ?, 
+                                        z.Причина = ?, 
+                                        z.id_Механик = ?, 
+                                        z.Дата_запуска = ?, 
+                                        z.Комментарий = ?
+                                    WHERE z.ID = ?;''',
+                               (val1 + (self.tree.set(self.tree.selection()[0], '#11'),)))
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.view_records()
         msg = f"Запись отредактирована!"
         mb.showinfo("Информация", msg)
 
     # ===ФУНКЦИЯ КНОПКИ ЧЕРЕЗ КОММЕНТИРОВАНИЯ================================================
     def comment(self, comment):
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor()
-            cursor.execute(f'''UPDATE {table_zayavki} SET Комментарий=? WHERE ID=?''',
-                           (comment, self.tree.set(self.tree.selection()[0], '#11')))
-            connection2.commit()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor()
+                cursor.execute(f'''UPDATE {table_zayavki} SET Комментарий=? WHERE ID=?''',
+                               (comment, self.tree.set(self.tree.selection()[0], '#11')))
+                connection2.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.view_records()
         msg = f"Комментарий добавлен!"
         mb.showinfo("Информация", msg)
@@ -728,39 +818,42 @@ class Main(tk.Frame):
         self.tree.tag_configure("Yellow.Treeview", foreground="yellow")
         date_obj = datetime.datetime.now()
         formatted_date = date_obj.strftime('%d.%m.%Y')
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
-            cursor = connection.cursor()
-            cursor.execute(f'''SELECT z.Номер_заявки,
-                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
-                                   w.ФИО AS Диспетчер,
-                                   g.город AS Город,
-                                   CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                   тип_лифта,
-                                   причина,
-                                   m.ФИО,
-                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
-                                   комментарий,
-                                   z.id,
-                                   z.дата_заявки
-                            FROM zayavki z
-                            JOIN workers w ON z.id_диспетчер = w.id
-                            JOIN goroda g ON z.id_город = g.id
-                            JOIN street s ON z.id_улица = s.id
-                            JOIN doma d ON z.id_дом = d.id
-                            JOIN padik p ON z.id_подъезд = p.id
-                            JOIN workers m ON z.id_механик = m.id
-                            WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%m') = ?
-                            AND DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%Y') = ?
-                            order by z.id;''',
-                           (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}',))
-            [self.tree.delete(i) for i in self.tree.get_children()]
-            for row in cursor.fetchall():
-                if row[-4] == None and row[-1] < int((time.time()) - 86400):
-                    self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
-                else:
-                    self.tree.insert('', 'end', values=tuple(row))
-            self.tree.yview_moveto(1.0)
-            connection.commit()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
+                cursor = connection.cursor()
+                cursor.execute(f'''SELECT z.Номер_заявки,
+                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                       w.ФИО AS Диспетчер,
+                                       g.город AS Город,
+                                       CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
+                                       тип_лифта,
+                                       причина,
+                                       m.ФИО,
+                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                       комментарий,
+                                       z.дата_заявки,
+                                       z.id
+                                FROM zayavki z
+                                JOIN workers w ON z.id_диспетчер = w.id
+                                JOIN goroda g ON z.id_город = g.id
+                                JOIN street s ON z.id_улица = s.id
+                                JOIN doma d ON z.id_дом = d.id
+                                JOIN padik p ON z.id_подъезд = p.id
+                                JOIN workers m ON z.id_механик = m.id
+                                WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%m') = ?
+                                AND DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%Y') = ?
+                                order by z.id;''',
+                               (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}',))
+                [self.tree.delete(i) for i in self.tree.get_children()]
+                for row in cursor.fetchall():
+                    if row[-4] == None and row[-2] < int((time.time()) - 86400):
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
+                    else:
+                        self.tree.insert('', 'end', values=tuple(row))
+                self.tree.yview_moveto(1.0)
+                connection.commit()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.print_info(formatted_date)
 
     # ===ФУНКЦИЯ КНОПКИ ПОИСКА ПО АДРЕСУ===============================================
@@ -829,11 +922,14 @@ class Main(tk.Frame):
     def check_input_fio(self, _event=None):
         value7 = self.entry7.get().lower()  # Получаем и приводим к нижнему регистру вводимое значение
         names = []  # Список для имен
-        with closing(
-                mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute("select id, ФИО from workers where Должность = 'Механик'")
-            self.data_meh = cursor.fetchall()
+        try:
+            with closing(
+                    mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute("select id, ФИО from workers where Должность = 'Механик'")
+                self.data_meh = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         for i in self.data_meh:  # Парсим ФИО из файла
             names.append(''.join(i['ФИО']))
         if value7 == '':  # Если поле ввода пустое, показываем все ФИО
@@ -856,19 +952,22 @@ class Main(tk.Frame):
         value = self.entry3.get().lower()
         self.listbox_type.delete(0, tk.END)
         names = []
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute(f'''
-                SELECT street.улица, doma.номер as дом, padik.номер as подъезд
-                FROM street 
-                JOIN doma ON street.id = doma.улица_id
-                JOIN padik ON doma.id = padik.дом_id
-                JOIN goroda ON street.город_id = goroda.id
-                WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
-            data_streets = cursor.fetchall()
-            for d in data_streets:
-                address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
-                names.append(address_str)  # Добавляем строку адреса в список names
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute(f'''
+                    SELECT street.улица, doma.номер as дом, padik.номер as подъезд
+                    FROM street 
+                    JOIN doma ON street.id = doma.улица_id
+                    JOIN padik ON doma.id = padik.дом_id
+                    JOIN goroda ON street.город_id = goroda.id
+                    WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
+                data_streets = cursor.fetchall()
+                for d in data_streets:
+                    address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
+                    names.append(address_str)  # Добавляем строку адреса в список names
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         if value == '':
             self.listbox_values.set(names)
             self.entry4.delete(0, tk.END)
@@ -897,21 +996,24 @@ class Main(tk.Frame):
         # БЕРЕМ ИЗ ПАДИКОВ ТИПЫ ЛИФТОВ
         selected_address = self.data3
         street, house, entrance = selected_address.split(', ')
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute(f'''
-                        SELECT lifts.тип_лифта
-                        FROM lifts
-                        JOIN padik ON lifts.id_подъезд = padik.id
-                        JOIN doma ON lifts.id_дом = doma.id
-                        JOIN street ON lifts.id_улица = street.id
-                        JOIN goroda ON lifts.id_город = goroda.id
-                        WHERE goroda.город = "{self.selected_city}" AND street.улица = "{street}"
-                        and doma.номер = "{house}" and padik.номер = "{entrance}" order BY street.улица, doma.`номер`, padik.`номер`''')
-            data_lifts = cursor.fetchall()
-            for lift in data_lifts:
-                lift_str = f"{lift['тип_лифта']}"
-                self.listbox_type.insert(tk.END, lift_str)
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute(f'''
+                            SELECT lifts.тип_лифта
+                            FROM lifts
+                            JOIN padik ON lifts.id_подъезд = padik.id
+                            JOIN doma ON lifts.id_дом = doma.id
+                            JOIN street ON lifts.id_улица = street.id
+                            JOIN goroda ON lifts.id_город = goroda.id
+                            WHERE goroda.город = "{self.selected_city}" AND street.улица = "{street}"
+                            and doma.номер = "{house}" and padik.номер = "{entrance}" order BY street.улица, doma.`номер`, padik.`номер`''')
+                data_lifts = cursor.fetchall()
+                for lift in data_lifts:
+                    lift_str = f"{lift['тип_лифта']}"
+                    self.listbox_type.insert(tk.END, lift_str)
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
     def create_combobox(self, combo_text, town):
         frame = ttk.Frame(borderwidth=1, relief=SOLID, padding=[8, 10])
@@ -945,53 +1047,61 @@ class Main(tk.Frame):
                     "Ошибка",
                     f"Введите данные в строке: {naz[i]}")
                 return
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
-            cursor = connection.cursor()
-            cursor.execute(f"SELECT COALESCE(MAX(Номер_заявки), 0) FROM {table_zayavki} WHERE DATE_FORMAT(FROM_UNIXTIME("
-                f"Дата_заявки), '%Y-%m') = ?",
-                ((datetime.datetime.now()).strftime('%Y-%m'),))
-            res = cursor.fetchone()[0]
-            # Если нет, то сделаем номер заявки равным 1
-            if res is None:
-                self.num_request = 1
-            else:
-                self.num_request = res + 1
-            #===========================================
-            data = self.entry_text3.get()
-            parts = data.split(',')
+        try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                 cursor = connection.cursor()
-                cursor.execute(f'''SELECT goroda.id AS goroda_id, street.id AS street_id, doma.id AS doma_id, padik.id AS padik_id
-                                        FROM lifts
-                                        JOIN padik ON lifts.id_подъезд = padik.id
-                                        JOIN doma ON lifts.id_дом = doma.id
-                                        JOIN street ON lifts.id_улица = street.id
-                                        JOIN goroda ON lifts.id_город = goroda.id
-                                        WHERE goroda.город = "{self.selected_city}" AND street.улица = "{parts[0].strip()}" AND doma.номер = "{parts[1].strip()}" 
-                                        AND padik.номер = "{parts[2].strip()}";''')
-                data_lifts = cursor.fetchall()
-            gorod, street, dom, padik = data_lifts[0]
-            val = (self.num_request, unix_time, self.selected_disp_id,
-                   gorod, street, dom, padik, self.entry4.get(),
-                self.prich5.get(), self.data_meh_id, None, '')
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
-                cursor = connection.cursor()
-                cursor.execute(f'''INSERT INTO zayavki (
-                                Номер_заявки,
-                                Дата_заявки,
-                                id_Диспетчер,
-                                id_город,
-                                id_улица,
-                                id_дом,
-                                id_подъезд,
-                                тип_лифта,
-                                Причина,
-                                id_Механик,
-                                Дата_запуска,
-                                Комментарий) 
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',(val))
-                # inf = cursor.execute('SELECT LAST_INSERT_ID()').fetchone()
-                connection.commit()
+                cursor.execute(f"SELECT COALESCE(MAX(Номер_заявки), 0) FROM {table_zayavki} WHERE DATE_FORMAT(FROM_UNIXTIME("
+                    f"Дата_заявки), '%Y-%m') = ?",
+                    ((datetime.datetime.now()).strftime('%Y-%m'),))
+                res = cursor.fetchone()[0]
+                # Если нет, то сделаем номер заявки равным 1
+                if res is None:
+                    self.num_request = 1
+                else:
+                    self.num_request = res + 1
+                #===========================================
+                data = self.entry_text3.get()
+                parts = data.split(',')
+                try:
+                    with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
+                        cursor = connection.cursor()
+                        cursor.execute(f'''SELECT goroda.id AS goroda_id, street.id AS street_id, doma.id AS doma_id, padik.id AS padik_id
+                                                FROM lifts
+                                                JOIN padik ON lifts.id_подъезд = padik.id
+                                                JOIN doma ON lifts.id_дом = doma.id
+                                                JOIN street ON lifts.id_улица = street.id
+                                                JOIN goroda ON lifts.id_город = goroda.id
+                                                WHERE goroda.город = "{self.selected_city}" AND street.улица = "{parts[0].strip()}" AND doma.номер = "{parts[1].strip()}" 
+                                                AND padik.номер = "{parts[2].strip()}";''')
+                        data_lifts = cursor.fetchall()
+                except mariadb.Error as e:
+                    showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+                gorod, street, dom, padik = data_lifts[0]
+                val = (self.num_request, unix_time, self.selected_disp_id,
+                       gorod, street, dom, padik, self.entry4.get(),
+                    self.prich5.get(), self.data_meh_id, None, '')
+                try:
+                    with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
+                        cursor = connection.cursor()
+                        cursor.execute(f'''INSERT INTO zayavki (
+                                        Номер_заявки,
+                                        Дата_заявки,
+                                        id_Диспетчер,
+                                        id_город,
+                                        id_улица,
+                                        id_дом,
+                                        id_подъезд,
+                                        тип_лифта,
+                                        Причина,
+                                        id_Механик,
+                                        Дата_запуска,
+                                        Комментарий) 
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',(val))
+                        connection.commit()
+                except mariadb.Error as e:
+                    showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         msg = f"Запись успешно добавлена! Её порядковый номер - {res + 1}"
         mb.showinfo("Информация", msg)
         self.view_records()
@@ -1047,10 +1157,13 @@ class Child(tk.Toplevel):
         self.calen1 = tk.Entry(self, textvariable=self.text_entry_data, font=font10)
         self.calen1.place(x=200, y=50)
 #================================================================================================
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute("SELECT id, ФИО FROM workers WHERE Должность = 'Диспетчер'")
-            read = cursor.fetchall()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute("SELECT id, ФИО FROM workers WHERE Должность = 'Диспетчер'")
+                read = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         # Создание словаря с соответствием ФИО и ID диспетчеров
         self.fio_to_id = {i['ФИО']: i['id'] for i in read}
         # Получение списка ФИО диспетчеров
@@ -1063,10 +1176,13 @@ class Child(tk.Toplevel):
         self.dispetcher.current(0)
         self.dispetcher.place(x=200, y=80)
 #============================================================================================
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute("select id, город from goroda")
-            data_towns = cursor.fetchall()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute("select id, город from goroda")
+                data_towns = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.town_to_id = {i['город']: i['id'] for i in data_towns}
         # Получение списка ФИО диспетчеров
         town_d = [i['город'] for i in data_towns]
@@ -1077,20 +1193,23 @@ class Child(tk.Toplevel):
         self.combobox_town.place(x=200, y=110)
         self.combobox_town.bind("<<ComboboxSelected>>", self.on_town_select)
 #=============================================================================================
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute(f'''SELECT goroda.id as goroda_id, goroda.город, 
-                CONCAT(street.улица, ', ', doma.номер, ', ', padik.номер) as Адрес,
-                street.id as street_id, street.улица as улица,
-                doma.id as doma_id, doma.номер as дом, 
-                padik.id as padik_id, padik.номер as подъезд
-                FROM goroda
-                JOIN street ON goroda.id = street.город_id
-                JOIN doma ON street.id = doma.улица_id
-                JOIN padik ON doma.id = padik.дом_id
-                WHERE goroda.город = "{self.combobox_town.get()}"
-                order by street.улица, doma.номер, padik.номер''')
-            adreses = cursor.fetchall()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute(f'''SELECT goroda.id as goroda_id, goroda.город, 
+                    CONCAT(street.улица, ', ', doma.номер, ', ', padik.номер) as Адрес,
+                    street.id as street_id, street.улица as улица,
+                    doma.id as doma_id, doma.номер as дом, 
+                    padik.id as padik_id, padik.номер as подъезд
+                    FROM goroda
+                    JOIN street ON goroda.id = street.город_id
+                    JOIN doma ON street.id = doma.улица_id
+                    JOIN padik ON doma.id = padik.дом_id
+                    WHERE goroda.город = "{self.combobox_town.get()}"
+                    order by street.улица, doma.номер, padik.номер''')
+                adreses = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.street_to_id = {i['улица']: i['street_id'] for i in adreses}
         self.house_to_id = {i['дом']: i['doma_id'] for i in adreses}
         self.padik_to_id = {i['подъезд']: i['padik_id'] for i in adreses}
@@ -1107,20 +1226,23 @@ class Child(tk.Toplevel):
         self.selected_type = tk.StringVar(value=self.rows[0]['тип_лифта'])
         self.combobox_lift = ttk.Combobox(self, textvariable=self.selected_type, font=font10)
         self.street, self.house, self.entrance = self.address_combobox.get().split(', ')
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
-            cursor = connection.cursor(dictionary=True)
-            cursor.execute(f'''SELECT lifts.тип_лифта
-                                FROM lifts
-                                JOIN padik ON lifts.id_подъезд = padik.id
-                                JOIN doma ON lifts.id_дом = doma.id
-                                JOIN street ON lifts.id_улица = street.id
-                                JOIN goroda ON lifts.id_город = goroda.id
-                                WHERE goroda.город = "{self.combobox_town.get()}" AND street.улица = "{self.street}"
-                                and doma.номер = "{self.house}" and padik.номер = "{self.entrance}"''')
-            data_lifts = cursor.fetchall()
-            self.add_type_lifts = [lift['тип_лифта'] for lift in data_lifts]
-            # Обновление значений комбобокса с типами лифтов
-            self.combobox_lift['values'] = self.add_type_lifts
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f'''SELECT lifts.тип_лифта
+                                    FROM lifts
+                                    JOIN padik ON lifts.id_подъезд = padik.id
+                                    JOIN doma ON lifts.id_дом = doma.id
+                                    JOIN street ON lifts.id_улица = street.id
+                                    JOIN goroda ON lifts.id_город = goroda.id
+                                    WHERE goroda.город = "{self.combobox_town.get()}" AND street.улица = "{self.street}"
+                                    and doma.номер = "{self.house}" and padik.номер = "{self.entrance}"''')
+                data_lifts = cursor.fetchall()
+                self.add_type_lifts = [lift['тип_лифта'] for lift in data_lifts]
+                # Обновление значений комбобокса с типами лифтов
+                self.combobox_lift['values'] = self.add_type_lifts
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.combobox_lift.place(x=200, y=170)
 #==============================================================================================
         self.combobox_stop = ttk.Combobox(self, values=list(dict.fromkeys(
@@ -1128,10 +1250,13 @@ class Child(tk.Toplevel):
         self.combobox_stop.current(0)
         self.combobox_stop.place(x=200, y=200)
 #==============================================================================================
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute("select ФИО, id from workers where Должность = 'Механик'")
-            read = cursor.fetchall()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute("select ФИО, id from workers where Должность = 'Механик'")
+                read = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.meh_to_id = {i['ФИО']: i['id'] for i in read}
         meh = [i['ФИО'] for i in read]
         m1 = [j for j in meh]
@@ -1162,16 +1287,19 @@ class Child(tk.Toplevel):
     def on_town_select(self, event):
         selected_town = self.combobox_town.get()
         # Запрос к базе данных для получения типов лифтов на основе выбранного адреса
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute(f'''SELECT CONCAT(street.улица, ', ', CAST(doma.номер AS CHAR), ', ', CAST(padik.номер AS CHAR)) AS Адрес
-                FROM goroda
-                JOIN street ON goroda.id = street.город_id
-                JOIN doma ON street.id = doma.улица_id
-                JOIN padik ON doma.id = padik.дом_id
-                WHERE goroda.город = "{self.combobox_town.get()}"
-                order by street.улица, doma.номер, padik.номер''')
-            adreses = cursor.fetchall()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute(f'''SELECT CONCAT(street.улица, ', ', CAST(doma.номер AS CHAR), ', ', CAST(padik.номер AS CHAR)) AS Адрес
+                    FROM goroda
+                    JOIN street ON goroda.id = street.город_id
+                    JOIN doma ON street.id = doma.улица_id
+                    JOIN padik ON doma.id = padik.дом_id
+                    WHERE goroda.город = "{self.combobox_town.get()}"
+                    order by street.улица, doma.номер, padik.номер''')
+                adreses = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.add_adres = [adres['Адрес'] for adres in adreses]
         # Обновление значений комбобокса с типами лифтов
         self.address_combobox['values'] = self.add_adres
@@ -1182,22 +1310,25 @@ class Child(tk.Toplevel):
     def on_address_select(self, event):
         # Запрос к базе данных для получения типов лифтов на основе выбранного адреса
         self.street, self.house, self.entrance = self.address_combobox.get().split(', ')
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
-            cursor = connection.cursor(dictionary=True)
-            cursor.execute(f'''SELECT lifts.тип_лифта
-                            FROM lifts
-                            JOIN padik ON lifts.id_подъезд = padik.id
-                            JOIN doma ON lifts.id_дом = doma.id
-                            JOIN street ON lifts.id_улица = street.id
-                            JOIN goroda ON lifts.id_город = goroda.id
-                            WHERE goroda.город = "{self.combobox_town.get()}" AND street.улица = "{self.street}"
-                            and doma.номер = "{self.house}" and padik.номер = "{self.entrance}"''')
-            data_lifts = cursor.fetchall()
-            self.add_type_lifts = [lift['тип_лифта'] for lift in data_lifts]
-            # Обновление значений комбобокса с типами лифтов
-            self.combobox_lift['values'] = self.add_type_lifts
-            # Сбрасываем текущее выбранное значение типа лифта
-            self.selected_type.set('ВЫБРАТЬ ЛИФТ')
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(f'''SELECT lifts.тип_лифта
+                                FROM lifts
+                                JOIN padik ON lifts.id_подъезд = padik.id
+                                JOIN doma ON lifts.id_дом = doma.id
+                                JOIN street ON lifts.id_улица = street.id
+                                JOIN goroda ON lifts.id_город = goroda.id
+                                WHERE goroda.город = "{self.combobox_town.get()}" AND street.улица = "{self.street}"
+                                and doma.номер = "{self.house}" and padik.номер = "{self.entrance}"''')
+                data_lifts = cursor.fetchall()
+                self.add_type_lifts = [lift['тип_лифта'] for lift in data_lifts]
+                # Обновление значений комбобокса с типами лифтов
+                self.combobox_lift['values'] = self.add_type_lifts
+                # Сбрасываем текущее выбранное значение типа лифта
+                self.selected_type.set('ВЫБРАТЬ ЛИФТ')
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
     def get_selected_dispetcher_id(self):
         selected_dispetcher_fio = self.dispetcher.get()
@@ -1255,12 +1386,13 @@ class Search(tk.Toplevel):
         self.title('Поиск')
         self.geometry('600x350+400+300')
         self.resizable(False, False)
-        self.wm_attributes('-topmost', 1)
-        self.bind('<Unmap>', self.on_unmap)
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute("select id, город from goroda")
-            data_towns = cursor.fetchall()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute("select id, город from goroda")
+                data_towns = cursor.fetchall()
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         # Установить значение по умолчанию
         default_town = data_towns[0] if data_towns else ''
         self.var2 = tk.StringVar(value=default_town)
@@ -1300,21 +1432,24 @@ class Search(tk.Toplevel):
         selected_city_str = eval(self.var2.get())
         self.selected_city_id = selected_city_str['id']
         self.selected_city = selected_city_str['город']
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute(f'''SELECT goroda.id as goroda_id, goroda.город, 
-                street.id as street_id, street.улица, 
-                doma.id as doma_id, doma.номер as дом, 
-                padik.id as padik_id, padik.номер as подъезд
-                FROM goroda
-                JOIN street ON goroda.id = street.город_id
-                JOIN doma ON street.id = doma.улица_id
-                JOIN padik ON doma.id = padik.дом_id
-                WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
-            self.data_streets = cursor.fetchall()
-            for d in self.data_streets:
-                self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
-                self.listbox11.insert(tk.END, self.address_str)
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute(f'''SELECT goroda.id as goroda_id, goroda.город, 
+                    street.id as street_id, street.улица, 
+                    doma.id as doma_id, doma.номер as дом, 
+                    padik.id as padik_id, padik.номер as подъезд
+                    FROM goroda
+                    JOIN street ON goroda.id = street.город_id
+                    JOIN doma ON street.id = doma.улица_id
+                    JOIN padik ON doma.id = padik.дом_id
+                    WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
+                self.data_streets = cursor.fetchall()
+                for d in self.data_streets:
+                    self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
+                    self.listbox11.insert(tk.END, self.address_str)
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.frame11.pack(side=tk.LEFT, anchor=tk.NW)
         style = ttk.Style()
         # Создаем стиль для кнопки "Поиск" с зеленым цветом
@@ -1322,20 +1457,12 @@ class Search(tk.Toplevel):
         # Создаем стиль для кнопки "Закрыть" с красным цветом
         style.configure("Red.TButton", foreground="red", background="#FCA195", font='Calibri 12')
         # Создание и размещение кнопки "Поиск" большого размера слева снизу
-        btn_search = ttk.Button(self, text='Поиск', style="Green.TButton")
+        btn_search = ttk.Button(self, text='Поиск', style="Green.TButton", command=self.destroy)
         btn_search.place(x=0, y=300, width=300, height=50)  # Установить координаты, ширину и высоту
         # Создание и размещение кнопки "Закрыть" большого размера справа снизу
         btn_cancel = ttk.Button(self, text='Закрыть', command=self.destroy, style="Red.TButton")
         btn_cancel.place(x=300, y=300, width=300, height=50)  # Установить координаты, ширину и высоту
-        btn_search.bind('<Button-1>', lambda event: self.view.search_records(self.var2, self.entry11.get(), self.calendar1.get(),self.calendar2.get()))
-        btn_search.bind('<Button-1>', lambda event: self.destroy(), add='+')
-
-    def on_unmap(self, event):
-        self.deiconify()  # Отменяем сворачивание дочернего окна
-
-    def deiconify(self):
-        if self.state() == 'iconic':
-            self.state('normal')
+        btn_search.bind('<Button-1>', lambda event: (self.view.search_records(self.var2, self.entry11.get(), self.calendar1.get(), self.calendar2.get())))
 
     def on_select_city(self, *args):
         selected_city_str = eval(self.var2.get())
@@ -1343,21 +1470,24 @@ class Search(tk.Toplevel):
         self.selected_city = selected_city_str['город']
         # Очистить Listbox перед добавлением новых улиц
         self.listbox11.delete(0, tk.END)
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute(f'''SELECT goroda.id as goroda_id, goroda.город, 
-                street.id as street_id, street.улица, 
-                doma.id as doma_id, doma.номер as дом, 
-                padik.id as padik_id, padik.номер as подъезд
-                FROM goroda
-                JOIN street ON goroda.id = street.город_id
-                JOIN doma ON street.id = doma.улица_id
-                JOIN padik ON doma.id = padik.дом_id
-                WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
-            self.data_streets = cursor.fetchall()
-            for d in self.data_streets:
-                self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
-                self.listbox11.insert(tk.END, self.address_str)
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute(f'''SELECT goroda.id as goroda_id, goroda.город, 
+                    street.id as street_id, street.улица, 
+                    doma.id as doma_id, doma.номер as дом, 
+                    padik.id as padik_id, padik.номер as подъезд
+                    FROM goroda
+                    JOIN street ON goroda.id = street.город_id
+                    JOIN doma ON street.id = doma.улица_id
+                    JOIN padik ON doma.id = padik.дом_id
+                    WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
+                self.data_streets = cursor.fetchall()
+                for d in self.data_streets:
+                    self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
+                    self.listbox11.insert(tk.END, self.address_str)
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
         # =========================================================================
     def check_input_11(self, _event=None):
@@ -1366,21 +1496,24 @@ class Search(tk.Toplevel):
         self.selected_city = selected_city_str['город']
         value = self.entry_text11.get().lower()
         names = []
-        with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-            cursor = connection2.cursor(dictionary=True)
-            cursor.execute(f'''SELECT goroda.id as goroda_id, goroda.город, 
-                street.id as street_id, street.улица, 
-                doma.id as doma_id, doma.номер as дом, 
-                padik.id as padik_id, padik.номер as подъезд
-                FROM goroda
-                JOIN street ON goroda.id = street.город_id
-                JOIN doma ON street.id = doma.улица_id
-                JOIN padik ON doma.id = padik.дом_id
-                WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
-            self.data_streets = cursor.fetchall()
-            for d in self.data_streets:
-                self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"  # Парсим адреса из файла
-                names.append(''.join(self.address_str).strip())
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute(f'''SELECT goroda.id as goroda_id, goroda.город, 
+                    street.id as street_id, street.улица, 
+                    doma.id as doma_id, doma.номер as дом, 
+                    padik.id as padik_id, padik.номер as подъезд
+                    FROM goroda
+                    JOIN street ON goroda.id = street.город_id
+                    JOIN doma ON street.id = doma.улица_id
+                    JOIN padik ON doma.id = padik.дом_id
+                    WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
+                self.data_streets = cursor.fetchall()
+                for d in self.data_streets:
+                    self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"  # Парсим адреса из файла
+                    names.append(''.join(self.address_str).strip())
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         if value == '':  # Если поле ввода пустое, показываем все адреса
             self.listbox_values11.set(names)
         else:  # Если введено что-то, показываем только подходящие по шаблону адреса
@@ -1418,10 +1551,23 @@ class Comment(tk.Toplevel):
         btn_cancel.place(x=235, y=50)
         btn_search = ttk.Button(self, text='Комментировать', command=self.save_and_close)
         btn_search.place(x=110, y=50)
+        self.entry123.bind("<Button-3>", self.show_menu)
+        self.entry123.bind_all("<Control-v>", self.paste_text)
 
     def save_and_close(self):
         self.view.comment(self.entry123.get())
         self.destroy()
+
+    def paste_text(self, event=None):
+        text_to_paste = self.clipboard_get()
+        self.entry123.insert(tk.INSERT, text_to_paste)
+
+    def show_menu(self, event):
+        # Создаем меню
+        menu = tk.Menu(self, tearoff=False, font=20)
+        menu.add_command(label="Вставить", command=self.paste_text)
+        # Показываем меню в указанной позиции
+        menu.post(event.x_root, event.y_root)
 
 if __name__ == "__main__":
     with open('config.json', 'r') as file:
