@@ -146,7 +146,7 @@ class Main(tk.Frame):
         toolbar7 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
         toolbar7.pack(side=tk.LEFT, fill=tk.Y)
         frame5 = tk.Frame()
-        label5 = tk.Label(toolbar7, borderwidth=1, width=18, relief="raised", text="Причина", font='Calibri 14 bold')
+        label5 = tk.Label(toolbar7, borderwidth=1, width=14, relief="raised", text="Причина", font='Calibri 14 bold')
         label5.pack()
         self.prichina = ['Неисправность', 'Застревание', 'Остановлен', 'Связь']
         self.prich5 = tk.StringVar(value='?')
@@ -451,7 +451,7 @@ class Main(tk.Frame):
                                        [self.tree.set(self.tree.selection()[0], '#11')])
                         connection2.commit()
                 except mariadb.Error as e:
-                    showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+                    showinfo('Информация', f"Ошибка удаления записи: {e}")
             else:
                 showinfo("Результат", "Операция отменена")
         else:
@@ -729,9 +729,7 @@ class Main(tk.Frame):
             df = pd.DataFrame(data, columns=[i[0] for i in cursor.description])
             # Закрыть соединение с базой данных
             conn.close()
-            # Экспортировать данные в Excel
-            df.to_excel('данные.xlsx', index=False)
-            subprocess.call("данные.xlsx", shell=True)
+            Excel(df)
         else:
             msg = f"Нужно выделить одну или несколько строк, которые нужно вставить в excel"
             mb.showerror("Ошибка!", msg)
@@ -831,7 +829,6 @@ class Main(tk.Frame):
                                        m.ФИО,
                                        FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
                                        комментарий,
-                                       z.дата_заявки,
                                        z.id
                                 FROM zayavki z
                                 JOIN workers w ON z.id_диспетчер = w.id
@@ -846,7 +843,7 @@ class Main(tk.Frame):
                                (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}',))
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
-                    if row[-4] == None and row[-2] < int((time.time()) - 86400):
+                    if row[-4] == None and row[-1] < int((time.time()) - 86400):
                         self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
                     else:
                         self.tree.insert('', 'end', values=tuple(row))
@@ -1039,7 +1036,7 @@ class Main(tk.Frame):
         unix_time = int(time_obj.timestamp())
         d = (datetime.datetime.now(tz=None)).strftime("%d")
         val2 = [self.selected_disp_name, self.selected_city, self.entry_text3.get(),
-                self.entry4.get(), self.prich5.get(), self.entry_text7.get()]
+                self.entry_text4.get(), self.prich5.get(), self.entry_text7.get()]
         naz = ['Диспетчер', 'Город', 'Адрес', 'Тип лифта', 'Причина остановки', 'ФИО механика']
         for i in range(len(val2)):
             if len(val2[i]) < 2:
@@ -1065,21 +1062,21 @@ class Main(tk.Frame):
                 try:
                     with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                         cursor = connection.cursor()
-                        cursor.execute(f'''SELECT goroda.id AS goroda_id, street.id AS street_id, doma.id AS doma_id, padik.id AS padik_id
+                        cursor.execute(f'''SELECT goroda.id AS goroda_id, street.id AS street_id, doma.id AS doma_id, padik.id AS padik_id, lifts.id as id_лифт
                                                 FROM lifts
                                                 JOIN padik ON lifts.id_подъезд = padik.id
                                                 JOIN doma ON lifts.id_дом = doma.id
                                                 JOIN street ON lifts.id_улица = street.id
                                                 JOIN goroda ON lifts.id_город = goroda.id
                                                 WHERE goroda.город = "{self.selected_city}" AND street.улица = "{parts[0].strip()}" AND doma.номер = "{parts[1].strip()}" 
-                                                AND padik.номер = "{parts[2].strip()}";''')
+                                                AND padik.номер = "{parts[2].strip()}" and тип_лифта="{self.entry_text4.get()}";''')
                         data_lifts = cursor.fetchall()
                 except mariadb.Error as e:
                     showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-                gorod, street, dom, padik = data_lifts[0]
+                gorod, street, dom, padik, lift_id = data_lifts[0]
                 val = (self.num_request, unix_time, self.selected_disp_id,
                        gorod, street, dom, padik, self.entry4.get(),
-                    self.prich5.get(), self.data_meh_id, None, '')
+                    self.prich5.get(), self.data_meh_id, None, '', lift_id)
                 try:
                     with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                         cursor = connection.cursor()
@@ -1095,8 +1092,9 @@ class Main(tk.Frame):
                                         Причина,
                                         id_Механик,
                                         Дата_запуска,
-                                        Комментарий) 
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',(val))
+                                        Комментарий,
+                                        id_Лифт) 
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',(val))
                         connection.commit()
                 except mariadb.Error as e:
                     showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1568,6 +1566,18 @@ class Comment(tk.Toplevel):
         menu.add_command(label="Вставить", command=self.paste_text)
         # Показываем меню в указанной позиции
         menu.post(event.x_root, event.y_root)
+
+class Excel():
+    def __init__(self, df):
+        self.df = df
+        self.open_ex()
+
+    def open_ex(self):
+        # Экспортировать данные в Excel
+        self.df.to_excel('данные.xlsx', index=False)
+        process = subprocess.Popen("данные.xlsx", shell=True)
+        process.communicate()
+
 
 if __name__ == "__main__":
     with open('config.json', 'r') as file:
