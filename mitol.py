@@ -134,7 +134,7 @@ class Main(tk.Frame):
         self.frame4 = tk.Frame()
         self.entry_text4 = tk.StringVar()
         self.entry4 = tk.Entry(toolbar6, textvariable=self.entry_text4, width=18)
-        self.entry4.bind('<KeyRelease>', self.check_input_address)
+        self.entry4.bind('<KeyRelease>', self.check_input_lifts)
         self.label4.pack(side=tk.TOP)
         self.entry4.pack(side=tk.TOP, expand=True)
         self.listbox_values_type = tk.Variable()
@@ -184,7 +184,7 @@ class Main(tk.Frame):
         toolbar = tk.Frame(bd=2, borderwidth=1, relief="raised")
         toolbar.pack(side=tk.TOP, fill=tk.X, anchor=tk.N)
         helv36 = tkFont.Font(family='Helvetica', size=10, weight=tkFont.BOLD)
-        # ========================================================
+        # ================КНОПКИ========================================================
         tool1 = tk.Frame(toolbar, borderwidth=1, relief="raised")
         tool1.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
         btn_open_dialog = tk.Button(tool1, text='Добавить заявку', command=self.sql_insert, bg='#d7d8e0', compound=tk.LEFT, width=14, height=1, font=helv36)
@@ -193,7 +193,7 @@ class Main(tk.Frame):
         btn_refresh.pack(side=tk.BOTTOM)
         btn_search = tk.Button(tool1, text='Поиск адреса', bg='#d7d8e0', compound=tk.TOP, command=self.open_search_dialog, width=14, font=helv36)
         btn_search.pack(side=tk.TOP)
-        # ======================================================================
+        # =================КНОПКИ========================================================
         tool3 = tk.Frame(toolbar, borderwidth=1, relief="raised")
         tool3.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
         btn_refresh = tk.Button(tool3, text='Запущенные лифты', bg='#B4E2BE', compound=tk.TOP,command=self.start_lift, width=19, font=helv36)
@@ -202,9 +202,16 @@ class Main(tk.Frame):
         btn_refresh.pack(side=tk.TOP)
         btn_refresh = tk.Button(tool3, text='НЕ Закрытые заявки', bg='#FFC830', compound=tk.TOP,command=self.non_start_lift, width=19, font=helv36)
         btn_refresh.pack(side=tk.BOTTOM)
-        btn_refresh = tk.Button(tool3, text='Старый журнал', bg='#d7d8e0', compound=tk.TOP,
+        #=====================================================================================
+        tool4 = tk.Frame(toolbar, borderwidth=1, relief="raised")
+        tool4.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
+        btn_refresh = tk.Button(tool4, text='заявки до 21.03.24', bg='#d7d8e0', compound=tk.TOP,
                                 command=self.view_records_old, width=19, font=helv36)
         btn_refresh.pack(side=tk.BOTTOM)
+        self.enabled = IntVar()
+        self.enabled.set(pc_id)
+        enabled_checkbutton = ttk.Checkbutton(tool4, text="Переключить", variable=self.enabled, onvalue=2, offvalue=1)
+        enabled_checkbutton.pack(padx=6, pady=6, anchor=NW)
         # === ПЕРЕЛИСТЫВАНИЕ БД ПО МЕСЯЦАМ=====================================================================
         self.months = ["Январь", "Февраль", "Март", "Апрель",
                        "Май", "Июнь", "Июль", "Август",
@@ -311,10 +318,7 @@ class Main(tk.Frame):
                                     id,
                                     Дата_запуска - Дата_заявки AS Разница,
                                     Дата_заявки
-                                    FROM balash
-                                  WHERE Город<>"Балашиха" and strftime('%m', datetime(Дата_заявки, 'unixepoch')) = ?
-                                  and strftime('%Y', datetime(Дата_заявки, 'unixepoch')) = ?''',
-                               (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}',))
+                                    FROM balash''')
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
                     if row[-5] == "" and row[-1] < int((time.time() + 3 * 60 * 60) - 86400):
@@ -460,8 +464,6 @@ class Main(tk.Frame):
                 "Строка не выбрана")
             return
         self.view_records()
-        msg = f"Запись удалена!"
-        mb.showinfo("Информация", msg)
 
     # ===ОТМЕТИТЬ ЛОЖНУЮ==============================================================================
     def lojnaya(self, event):
@@ -520,8 +522,8 @@ class Main(tk.Frame):
                             JOIN padik p ON z.id_подъезд = p.id
                             JOIN workers m ON z.id_механик = m.id
                                   WHERE FROM_UNIXTIME(Дата_заявки, '%m') = ?
-                                  and FROM_UNIXTIME(Дата_заявки, '%Y') = ?''',
-                               (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}',))
+                                  and FROM_UNIXTIME(Дата_заявки, '%Y') = ? and z.pc_id = ?''',
+                               (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}', self.enabled.get()))
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
                     if row[-5] == "" and row[-1] < int((time.time()) - 86400):
@@ -561,8 +563,8 @@ class Main(tk.Frame):
                             JOIN padik p ON z.id_подъезд = p.id
                             JOIN workers m ON z.id_механик = m.id
                                   WHERE FROM_UNIXTIME(Дата_заявки, '%m') = ?
-                                  and FROM_UNIXTIME(Дата_заявки, '%Y') = ?''',
-                               (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}',))
+                                  and FROM_UNIXTIME(Дата_заявки, '%Y') = ? and z.pc_id = ?''',
+                               (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}', self.enabled.get()))
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
                     if row[-5] == "" and row[-1] < int((time.time()) - 86400):
@@ -585,9 +587,9 @@ class Main(tk.Frame):
                                     SUM(CASE WHEN z.Причина IN ('Остановлен', 'Неисправность', 'Застревание') THEN 1 ELSE 0 END) as Кол_во
                                     FROM zayavki z
                                     JOIN goroda g ON z.id_город = g.id
-                                    WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%d.%m.%Y') = ?
+                                    WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%d.%m.%Y') = ? and z.pc_id = ?
                                     GROUP BY Город;''',
-                (self.selected_date_str,))
+                (self.selected_date_str, pc_id))
                 [self.tree2.delete(i) for i in self.tree2.get_children()]
                 [self.tree2.insert('', 'end', values=row) for row in cursor.fetchall()]
                 connection.commit()
@@ -619,8 +621,8 @@ class Main(tk.Frame):
                                 JOIN padik p ON z.id_подъезд = p.id
                                 JOIN workers m ON z.id_механик = m.id
                                 WHERE Причина="Остановлен"
-                                and Дата_запуска is Null
-                                order by z.id;''')
+                                and Дата_запуска is Null and z.pc_id = ?
+                                order by z.id;''', (self.enabled.get(),))
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
                     self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
@@ -652,8 +654,8 @@ class Main(tk.Frame):
                                 JOIN doma d ON z.id_дом = d.id
                                 JOIN padik p ON z.id_подъезд = p.id
                                 JOIN workers m ON z.id_механик = m.id
-                                WHERE Дата_запуска is Null and Причина<>"Остановлен"
-                                order by z.id;''')
+                                WHERE Дата_запуска is Null and Причина<>"Остановлен" and z.pc_id = ?
+                                order by z.id;''', (self.enabled.get(),))
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
                     if row[-4] == None and row[-1] < int((time.time()) - 86400):
@@ -687,8 +689,8 @@ class Main(tk.Frame):
                                 JOIN padik p ON z.id_подъезд = p.id
                                 JOIN workers m ON z.id_механик = m.id
                                 where Причина="Остановлен" 
-                                and Дата_запуска is not Null
-                                order by z.id;''')
+                                and Дата_запуска is not Null and z.pc_id = ?
+                                order by z.id;''', (self.enabled.get(),))
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
                     self.tree.insert('', 'end', values=row)
@@ -838,9 +840,9 @@ class Main(tk.Frame):
                                 JOIN padik p ON z.id_подъезд = p.id
                                 JOIN workers m ON z.id_механик = m.id
                                 WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%m') = ?
-                                AND DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%Y') = ?
+                                AND DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%Y') = ? and z.pc_id = ?
                                 order by z.id;''',
-                               (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}',))
+                               (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}', self.enabled.get()))
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
                     if row[-4] == None and row[-1] < int((time.time()) - 86400):
@@ -944,9 +946,40 @@ class Main(tk.Frame):
             self.entry_text7.set(self.data7)  # Задаем выбранные данные в entry7
             self.check_input_fio()  # Обновляем listbox в соответствии с введенными данными
 
-    # ===ПАРСИНГ АДРЕСОВ ИЗ СПИСКА АДРЕСОВ В ЛИСТБОКС=====================
+    # ===ПАРСИНГ ТИПА ЛИФТОВ ИЗ СПИСКА ЛИФТОВ В ЛИСТБОКС======================
+    def check_input_lifts(self, _event=None):
+        selected_address = self.data3
+        types = []
+        street, house, entrance = selected_address.split(', ')
+        try:
+            with closing(
+                    mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+                cursor = connection2.cursor(dictionary=True)
+                cursor.execute(f'''SELECT lifts.тип_лифта
+                                    FROM lifts
+                                    JOIN padik ON lifts.id_подъезд = padik.id
+                                    JOIN doma ON lifts.id_дом = doma.id
+                                    JOIN street ON lifts.id_улица = street.id
+                                    JOIN goroda ON lifts.id_город = goroda.id
+                                    WHERE goroda.город = "{self.selected_city}" AND street.улица = "{street}"
+                                    and doma.номер = "{house}" and padik.номер = "{entrance}" order BY street.улица, doma.`номер`, padik.`номер`''')
+                data_lifts = cursor.fetchall()
+                for lift in data_lifts:
+                    lift_str = f"{lift['тип_лифта']}"
+                    types.append(lift_str)
+                    self.listbox_type.insert(tk.END, lift_str)
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+        if self.entry_text4.get() == '':
+            self.listbox_values_type.set(types)
+            self.entry4.delete(0, tk.END)
+        else:
+            data2 = [item for item in types if
+                    self.entry_text4.get().lower() in item.lower()]
+            self.listbox_values_type.set(data2)
+
+    # ===ПАРСИНГ АДРЕСОВ ИЗ СПИСКА АДРЕСОВ В ЛИСТБОКС=========================
     def check_input_address(self, _event=None):
-        value = self.entry3.get().lower()
         self.listbox_type.delete(0, tk.END)
         names = []
         try:
@@ -965,12 +998,11 @@ class Main(tk.Frame):
                     names.append(address_str)  # Добавляем строку адреса в список names
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        if value == '':
+        if self.entry3.get().lower() == '':
             self.listbox_values.set(names)
             self.entry4.delete(0, tk.END)
         else:
-            data = [item for item in names if
-                    value in item.lower().split(',')[0] or value in item.lower().split(',')[1]]
+            data = [item for item in names if self.entry3.get().lower() in item.lower()]
             self.listbox_values.set(data)
             self.on_change_selection_address
 
@@ -981,7 +1013,7 @@ class Main(tk.Frame):
             self.index4 = self.selection[0]
             self.data4 = event.widget.get(self.index4)
             self.entry_text4.set(self.data4)
-            self.check_input_address()
+        self.check_input_lifts()
     # ===ВСТАВКА АДРЕСА ИЗ ПАРСИНГА В ЛИСТБОКС=============================
     def on_change_selection_address(self, event):
         self.selection = event.widget.curselection()
@@ -990,27 +1022,7 @@ class Main(tk.Frame):
             self.data3 = event.widget.get(self.index3)
             self.entry_text3.set(self.data3)
             self.check_input_address()
-        # БЕРЕМ ИЗ ПАДИКОВ ТИПЫ ЛИФТОВ
-        selected_address = self.data3
-        street, house, entrance = selected_address.split(', ')
-        try:
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-                cursor = connection2.cursor(dictionary=True)
-                cursor.execute(f'''
-                            SELECT lifts.тип_лифта
-                            FROM lifts
-                            JOIN padik ON lifts.id_подъезд = padik.id
-                            JOIN doma ON lifts.id_дом = doma.id
-                            JOIN street ON lifts.id_улица = street.id
-                            JOIN goroda ON lifts.id_город = goroda.id
-                            WHERE goroda.город = "{self.selected_city}" AND street.улица = "{street}"
-                            and doma.номер = "{house}" and padik.номер = "{entrance}" order BY street.улица, doma.`номер`, padik.`номер`''')
-                data_lifts = cursor.fetchall()
-                for lift in data_lifts:
-                    lift_str = f"{lift['тип_лифта']}"
-                    self.listbox_type.insert(tk.END, lift_str)
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+        self.check_input_lifts()
 
     def create_combobox(self, combo_text, town):
         frame = ttk.Frame(borderwidth=1, relief=SOLID, padding=[8, 10])
@@ -1076,7 +1088,7 @@ class Main(tk.Frame):
                 gorod, street, dom, padik, lift_id = data_lifts[0]
                 val = (self.num_request, unix_time, self.selected_disp_id,
                        gorod, street, dom, padik, self.entry4.get(),
-                    self.prich5.get(), self.data_meh_id, None, '', lift_id)
+                    self.prich5.get(), self.data_meh_id, None, '', lift_id, pc_id)
                 try:
                     with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                         cursor = connection.cursor()
@@ -1093,8 +1105,9 @@ class Main(tk.Frame):
                                         id_Механик,
                                         Дата_запуска,
                                         Комментарий,
-                                        id_Лифт) 
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',(val))
+                                        id_Лифт,
+                                        pc_id) 
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',(val))
                         connection.commit()
                 except mariadb.Error as e:
                     showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1583,6 +1596,7 @@ if __name__ == "__main__":
     with open('config.json', 'r') as file:
         data = json.loads(file.read())
 
+    pc_id = data['pc_id']
     host = data['db_host']
     user = data['db_user']
     password = data['db_password']
