@@ -397,7 +397,7 @@ class Main(tk.Frame):
                                 JOIN padik p ON z.id_подъезд = p.id
                                 JOIN workers m ON z.id_механик = m.id
                                      where z.id=?''',
-                                   (self.tree.set(self.tree.selection()[0], '#1'),))
+                                   (self.tree.set(self.tree.selection()[0], '#11'),))
                     rows = cursor.fetchall()
                     Child(rows)
             except mariadb.Error as e:
@@ -1141,6 +1141,7 @@ class Child(tk.Toplevel):
         self.wm_attributes('-topmost', 1)
 
         self.bind('<Unmap>', self.on_unmap)
+        print(self.rows)
 
         font10 = tkFont.Font(family='Helvetica', size=10, weight=tkFont.BOLD)
         font12 = tkFont.Font(family='Helvetica', size=12, weight=tkFont.BOLD)
@@ -1267,7 +1268,7 @@ class Child(tk.Toplevel):
                 cursor.execute("select ФИО, id from workers where Должность = 'Механик'")
                 read = cursor.fetchall()
         except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+            showerror('Информация', f"Ошибка при работе с базой данных: {e}")
         self.meh_to_id = {i['ФИО']: i['id'] for i in read}
         meh = [i['ФИО'] for i in read]
         m1 = [j for j in meh]
