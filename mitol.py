@@ -173,12 +173,12 @@ class Main(tk.Frame):
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute("select id, ФИО from workers where Должность = 'Механик' order by ФИО")
                 self.data_meh = cursor.fetchall()
+            for d in self.data_meh:
+                self.data_meh_name = f"{d['ФИО']}"
+                self.data_meh_id = f"{d['id']}"
+                self.listbox7.insert(tk.END, self.data_meh_name)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        for d in self.data_meh:
-            self.data_meh_name = f"{d['ФИО']}"
-            self.data_meh_id = f"{d['id']}"
-            self.listbox7.insert(tk.END, self.data_meh_name)
         self.frame7.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
         # =======NEW TOOLBAR==============================================================
         toolbar = tk.Frame(bd=2, borderwidth=1, relief="raised")
@@ -205,7 +205,7 @@ class Main(tk.Frame):
         #=====================================================================================
         tool4 = tk.Frame(toolbar, borderwidth=1, relief="raised")
         tool4.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
-        btn_refresh = tk.Button(tool4, text='заявки до 21.03.24', bg='#d7d8e0', compound=tk.TOP,
+        btn_refresh = tk.Button(tool4, text='заявки до 25.03.24', bg='#d7d8e0', compound=tk.TOP,
                                 command=self.view_records_old, width=19, font=helv36)
         btn_refresh.pack(side=tk.BOTTOM)
         self.enabled = IntVar()
@@ -943,6 +943,9 @@ class Main(tk.Frame):
         if selection7:
             self.index7 = selection7[0]  # Если выбран элемент, получаем его индекс
             self.data7 = event.widget.get(self.index7)  # Получаем данные выбранного элемента
+            for d in self.data_meh:
+                if self.data7 == d['ФИО']:
+                    self.selected_meh_id = d['id']
             self.entry_text7.set(self.data7)  # Задаем выбранные данные в entry7
             self.check_input_fio()  # Обновляем listbox в соответствии с введенными данными
 
@@ -1088,7 +1091,7 @@ class Main(tk.Frame):
                 gorod, street, dom, padik, lift_id = data_lifts[0]
                 val = (self.num_request, unix_time, self.selected_disp_id,
                        gorod, street, dom, padik, self.entry4.get(),
-                    self.prich5.get(), self.data_meh_id, None, '', lift_id, pc_id)
+                    self.prich5.get(), self.selected_meh_id, None, '', lift_id, pc_id)
                 try:
                     with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                         cursor = connection.cursor()
@@ -1265,7 +1268,7 @@ class Child(tk.Toplevel):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute("select ФИО, id from workers where Должность = 'Механик'")
+                cursor.execute("select ФИО, id from workers where Должность = 'Механик' order by ФИО")
                 read = cursor.fetchall()
         except mariadb.Error as e:
             showerror('Информация', f"Ошибка при работе с базой данных: {e}")
