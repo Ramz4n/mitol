@@ -69,7 +69,6 @@ class Main(tk.Frame):
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.disp_to_id = {i['ФИО'] for i in data_workers}
         first_element = next(iter(self.disp_to_id), None)
-        print(first_element)
         if data_worker is None:
             data = first_element
         else:
@@ -210,8 +209,17 @@ class Main(tk.Frame):
         btn_refresh.pack(side=tk.BOTTOM)
         self.enabled = IntVar()
         self.enabled.set(pc_id)
-        enabled_checkbutton = ttk.Checkbutton(tool4, text="Переключить", variable=self.enabled, onvalue=2, offvalue=1)
-        enabled_checkbutton.pack(padx=6, pady=6, anchor=NW)
+        # enabled_checkbutton = ttk.Checkbutton(tool4, text="Переключить", variable=self.enabled, onvalue=2, offvalue=1)
+        # enabled_checkbutton.pack(padx=6, pady=6, anchor=NW)
+        self.my_label = Label(tool4,
+                         text="Мои заявки",
+                         fg="grey",
+                         font=("Helvetica", 10))
+        self.my_label.pack()
+        self.on = PhotoImage(file="on.png")
+        self.off = PhotoImage(file="off.png")
+        self.on_button = Button(tool4, image=self.off, bd=0, command=self.switch)
+        self.on_button.pack()
         # === ПЕРЕЛИСТЫВАНИЕ БД ПО МЕСЯЦАМ=====================================================================
         self.months = ["Январь", "Февраль", "Март", "Апрель",
                        "Май", "Июнь", "Июль", "Август",
@@ -291,6 +299,19 @@ class Main(tk.Frame):
         self.scrollbar.pack(side="bottom", fill="both")
         self.tree.pack(side="left", fill="both")
         self.on_select_city()
+
+    def switch(self):
+        # Determine is on or off
+        if self.enabled.get() == 1:
+            self.on_button.config(image=self.off)
+            self.my_label.config(text="Мои заявки", fg="grey")
+            self.enabled.set(2)
+            self.view_records()
+        else:
+            self.on_button.config(image=self.on)
+            self.my_label.config(text="Общие заявки", fg="green")
+            self.enabled.set(1)
+            self.view_records()
 
     def view_records_old(self):
         # Добавьте стиль и конфигурацию тега
@@ -587,9 +608,9 @@ class Main(tk.Frame):
                                     SUM(CASE WHEN z.Причина IN ('Остановлен', 'Неисправность', 'Застревание') THEN 1 ELSE 0 END) as Кол_во
                                     FROM zayavki z
                                     JOIN goroda g ON z.id_город = g.id
-                                    WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%d.%m.%Y') = ? and z.pc_id = ?
+                                    WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%d.%m.%Y') = ?
                                     GROUP BY Город;''',
-                (self.selected_date_str, pc_id))
+                (self.selected_date_str,))
                 [self.tree2.delete(i) for i in self.tree2.get_children()]
                 [self.tree2.insert('', 'end', values=row) for row in cursor.fetchall()]
                 connection.commit()
@@ -661,12 +682,13 @@ class Main(tk.Frame):
                     if row[-4] == None and row[-1] < int((time.time()) - 86400):
                         self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
                     else:
-                        self.tree.insert('', 'end', values=tuple(row))
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Yellow.Treeview',))
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
     # ===ЗАПУЩЕННЫЕ ЛИФТЫ==================================================================================
     def start_lift(self):
+        self.tree.tag_configure("Green.Treeview", foreground="#367749")
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                 cursor = connection.cursor()
@@ -693,7 +715,7 @@ class Main(tk.Frame):
                                 order by z.id;''', (self.enabled.get(),))
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
-                    self.tree.insert('', 'end', values=row)
+                    self.tree.insert('', 'end', values=row, tags=('Green.Treeview',))
                 connection.commit()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -810,12 +832,13 @@ class Main(tk.Frame):
     # ===ФУНКЦИЯ ОБНОВЛЕНИЯ ДАННЫХ В TREEVIEW==========================================
     def view_records(self):
         # Добавьте стиль и конфигурацию тега
+        time_format = "%d.%m.%Y, %H:%M"
         self.current_month_index = int((datetime.datetime.now(tz=None)).strftime("%m")) - 1
         self.current_year_index = int((datetime.datetime.now(tz=None)).strftime("%Y"))
         self.month_label.config(text=self.months[(self.current_month_index) % 12])
         self.year_label.config(text=self.current_year_index)
         self.tree.tag_configure("Red.Treeview", foreground="red")
-        self.tree.tag_configure("Yellow.Treeview", foreground="yellow")
+        self.tree.tag_configure("Yellow.Treeview", foreground="#FFB200")
         date_obj = datetime.datetime.now()
         formatted_date = date_obj.strftime('%d.%m.%Y')
         try:
@@ -845,8 +868,12 @@ class Main(tk.Frame):
                                (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}', self.enabled.get()))
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
-                    if row[-4] == None and row[-1] < int((time.time()) - 86400):
+                    if row[-3] is None and int((datetime.datetime.strptime(row[1], time_format)).timestamp()) < int((time.time()) - 86400):
                         self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
+                    elif row[-3] is None:
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Yellow.Treeview',))
+                    elif row[-3] != None and row[-5] == 'Остановлен':
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Green.Treeview',))
                     else:
                         self.tree.insert('', 'end', values=tuple(row))
                 self.tree.yview_moveto(1.0)
@@ -1144,7 +1171,6 @@ class Child(tk.Toplevel):
         self.wm_attributes('-topmost', 1)
 
         self.bind('<Unmap>', self.on_unmap)
-        print(self.rows)
 
         font10 = tkFont.Font(family='Helvetica', size=10, weight=tkFont.BOLD)
         font12 = tkFont.Font(family='Helvetica', size=12, weight=tkFont.BOLD)
