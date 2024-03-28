@@ -213,7 +213,7 @@ class Main(tk.Frame):
         self.enabled.set(pc_id)
         self.my_label = Label(tool4,
                          text="Мои заявки",
-                         fg="grey",
+                         fg="green",
                          font=("Helvetica", 10))
         self.my_label.pack()
         self.on = PhotoImage(file="on.png")
@@ -301,26 +301,23 @@ class Main(tk.Frame):
         self.on_select_city()
 
     def switch(self):
-        pc = {1, 2}  # Заменил список на множество для использования intersection
+        pc = {1, 2}
         if self.is_on:
             self.on_button.config(image=self.on)
-            self.my_label.config(text="Общие заявки", fg="green")
+            self.my_label.config(text="Чужие заявки", fg="red")
             new_value = (self.enabled.get() % len(pc)) + 1
-            print(new_value)
             self.enabled.set(new_value)
             self.view_records()
             self.is_on = False
         else:
             self.on_button.config(image=self.off)
-            self.my_label.config(text="Мои заявки", fg="grey")
+            self.my_label.config(text="Мои заявки", fg="green")
             new_value = (self.enabled.get() % len(pc))  + 1
-            print(new_value)
             self.enabled.set(new_value)
             self.view_records()
             self.is_on = True
 
     def view_records_old(self):
-        # Добавьте стиль и конфигурацию тега
         self.current_month_index = int((datetime.datetime.now(tz=None)).strftime("%m")) - 1
         self.current_year_index = int((datetime.datetime.now(tz=None)).strftime("%Y"))
         self.month_label.config(text=self.months[(self.current_month_index) % 12])
@@ -362,7 +359,6 @@ class Main(tk.Frame):
         selected_city_str = eval(self.var2.get())
         self.selected_city_id = selected_city_str['id']
         self.selected_city = selected_city_str['город']
-        # Очистить Listbox перед добавлением новых улиц
         self.listbox.delete(0, tk.END)
         self.listbox_type.delete(0, tk.END)
         try:
@@ -386,7 +382,6 @@ class Main(tk.Frame):
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
     def show_menu(self, event):
-        # Создаем меню
         menu = tk.Menu(self.tree, tearoff=False, font=20)
         menu.add_command(label="Редактировать", command=lambda: self.edit("Редактировать"))
         menu.add_command(label="Отметить Время", command=lambda: self.time_to("Отметить Время"))
@@ -394,7 +389,6 @@ class Main(tk.Frame):
         menu.add_command(label="Ложная Заявка", command=lambda: self.lojnaya("Ложная Заявка"))
         menu.add_command(label="------------------------", command=lambda: self.text("--------------"))
         menu.add_command(label="Удалить Заявку", command=lambda: self.delete("Удалить Заявку"))
-        # Показываем меню в указанной позиции
         menu.post(event.x_root, event.y_root)
 
     def text(self, event):
@@ -553,15 +547,20 @@ class Main(tk.Frame):
                                (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}', self.enabled.get()))
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
-                    if row[-5] == "" and row[-1] < int((time.time()) - 86400):
+                    if row[-3] is None and int((datetime.datetime.strptime(row[1], time_format)).timestamp()) < int(
+                            (time.time()) - 86400):
                         self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
+                    elif row[-3] is None:
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Yellow.Treeview',))
+                    elif row[-3] != None and row[-5] == 'Остановлен':
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Green.Treeview',))
                     else:
                         self.tree.insert('', 'end', values=tuple(row))
                 connection.commit()
+                self.tree.yview_moveto(1.0)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
-    # Function to update the label text backward
     def update_backward(self):
         self.current_month_index = (self.current_month_index - 1) % 12
         self.month_label.config(text=self.months[self.current_month_index])
@@ -594,11 +593,17 @@ class Main(tk.Frame):
                                (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}', self.enabled.get()))
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
-                    if row[-5] == "" and row[-1] < int((time.time()) - 86400):
+                    if row[-3] is None and int((datetime.datetime.strptime(row[1], time_format)).timestamp()) < int(
+                            (time.time()) - 86400):
                         self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
+                    elif row[-3] is None:
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Yellow.Treeview',))
+                    elif row[-3] != None and row[-5] == 'Остановлен':
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Green.Treeview',))
                     else:
                         self.tree.insert('', 'end', values=tuple(row))
                 connection.commit()
+                self.tree.yview_moveto(1.0)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
@@ -734,7 +739,6 @@ class Main(tk.Frame):
             selected_id_str = ', '.join([f'"{id}"' for id in selected_ids])
             conn = pymysql.connect(user=user, password=password, host=host, port=port, database=database)
             cursor = conn.cursor()
-            # Обновленный SQL запрос с корректной фильтрацией
             sql_query = f'''SELECT z.Номер_заявки,
                                    FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
                                    w.ФИО AS Диспетчер,
@@ -757,7 +761,6 @@ class Main(tk.Frame):
             cursor.execute(sql_query)
             data = cursor.fetchall()
             df = pd.DataFrame(data, columns=[i[0] for i in cursor.description])
-            # Закрыть соединение с базой данных
             conn.close()
             Excel(df)
         else:
@@ -782,12 +785,10 @@ class Main(tk.Frame):
                             padik, type_lift, prichina,fio_meh,
                         int(date_object2.timestamp()), comment)
                 except ValueError:
-                    # В случае неправильного формата date_to_go
                     msg = "Введите дату в формате ДД.ММ.ГГГГ, ЧЧ:ММ или нажмите на нужную заявку, а потом на кнопку 'Отметить время'"
                     mb.showerror("Ошибка", msg)
                     return
         except ValueError:
-            # В случае неправильного формата data
             msg = "Введите дату в формате ДД.ММ.ГГГГ, ЧЧ:ММ или нажмите на нужную заявку, а потом на кнопку 'Отметить время'"
             mb.showerror("Ошибка", msg)
             return
@@ -921,21 +922,18 @@ class Main(tk.Frame):
                             JOIN workers m ON z.id_механик = m.id
                             WHERE CONCAT(s.улица, ', ', d.номер, ', ', p.номер) LIKE ? 
                             and Дата_заявки BETWEEN "{unix_time1}" and "{unix_time2}"''', (f"%{adress}%",))
-            # Очистка текущих элементов в дереве
             [self.tree.delete(i) for i in self.tree.get_children()]
-            # Добавление новых записей в дерево
             for row in cur.fetchall():
                 self.tree.insert('', 'end', values=row)
-            # Выделение всех записей
             children = self.tree.get_children()
-            if children:  # Проверка на наличие записей для выделения
-                self.tree.selection_set(children)  # Выделение всех элементов в дереве
-                self.tree.focus(children[0])  # Фокус на первом элементе, если он есть
-        except mariadb.Error as e:  # Перехват ошибок MariaDB
+            if children:
+                self.tree.selection_set(children)
+                self.tree.focus(children[0])
+        except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        except Exception as e:  # Перехват непредвиденных ошибок
+        except Exception as e:
             showinfo('Информация', f"Произошла непредвиденная ошибка: {e}")
-        else:  # Блок, который будет выполнен в случае отсутствия ошибок
+        else:
             if not self.tree.get_children():
                 showinfo('Информация', "Нет заявок")
 
@@ -944,16 +942,16 @@ class Main(tk.Frame):
 
     # ===ОБНОВЛЕНИЕ СТРОК ФИО И АДРЕСОВ В ЛИСТБОКСАХ============================================
     def obnov(self):
-        self.entry3.delete(0, tk.END)  # Очищаем поле ввода entry3
-        self.entry4.delete(0, tk.END)  # Очищаем поле ввода entry3
-        self.entry7.delete(0, tk.END)  # Очищаем поле ввода entry7
-        self.tree.yview_moveto(1)  # Передвигаем видимую область таблицы в начало
+        self.entry3.delete(0, tk.END)
+        self.entry4.delete(0, tk.END)
+        self.entry7.delete(0, tk.END)
+        self.tree.yview_moveto(1)
         self.check_input_address()
         self.check_input_fio()
     # === Парсинг ФИО из списка бд фамилий в listbox ===
     def check_input_fio(self, _event=None):
-        value7 = self.entry7.get().lower()  # Получаем и приводим к нижнему регистру вводимое значение
-        names = []  # Список для имен
+        value7 = self.entry7.get().lower()
+        names = []
         try:
             with closing(
                     mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
@@ -962,25 +960,25 @@ class Main(tk.Frame):
                 self.data_meh = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        for i in self.data_meh:  # Парсим ФИО из файла
+        for i in self.data_meh:
             names.append(''.join(i['ФИО']))
-        if value7 == '':  # Если поле ввода пустое, показываем все ФИО
+        if value7 == '':
             self.listbox_values7.set(names)
-        else:  # Если введено что-то, показываем только подходящие по шаблону ФИО
+        else:
             data7 = [item7 for item7 in names if item7.lower().startswith(value7)]
             self.listbox_values7.set(data7)
 
     # === Вставка выбранного ФИО из парсинга в entrybox ===
     def on_change_selection_fio(self, event):
-        selection7 = event.widget.curselection()  # Получаем выбранный элемент
+        selection7 = event.widget.curselection()
         if selection7:
-            self.index7 = selection7[0]  # Если выбран элемент, получаем его индекс
-            self.data7 = event.widget.get(self.index7)  # Получаем данные выбранного элемента
+            self.index7 = selection7[0]
+            self.data7 = event.widget.get(self.index7)
             for d in self.data_meh:
                 if self.data7 == d['ФИО']:
                     self.selected_meh_id = d['id']
-            self.entry_text7.set(self.data7)  # Задаем выбранные данные в entry7
-            self.check_input_fio()  # Обновляем listbox в соответствии с введенными данными
+            self.entry_text7.set(self.data7)
+            self.check_input_fio()
 
     # ===ПАРСИНГ ТИПА ЛИФТОВ ИЗ СПИСКА ЛИФТОВ В ЛИСТБОКС======================
     def check_input_lifts(self, _event=None):
@@ -1031,7 +1029,7 @@ class Main(tk.Frame):
                 data_streets = cursor.fetchall()
                 for d in data_streets:
                     address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
-                    names.append(address_str)  # Добавляем строку адреса в список names
+                    names.append(address_str)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         if self.entry3.get().lower() == '':
@@ -1099,7 +1097,6 @@ class Main(tk.Frame):
                     f"Дата_заявки), '%Y-%m') = ?",
                     ((datetime.datetime.now()).strftime('%Y-%m'),))
                 res = cursor.fetchone()[0]
-                # Если нет, то сделаем номер заявки равным 1
                 if res is None:
                     self.num_request = 1
                 else:
