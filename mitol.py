@@ -62,8 +62,8 @@ class Main(tk.Frame):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute('''select w.ФИО from zayavki z
-                JOIN workers w ON z.id_диспетчер = w.id ORDER BY z.id DESC LIMIT 1''')
+                cursor.execute(f'''select w.ФИО from zayavki z
+                JOIN workers w ON z.id_диспетчер = w.id where pc_id = {pc_id} ORDER BY z.id DESC LIMIT 1''')
                 data_worker = cursor.fetchone()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -205,12 +205,12 @@ class Main(tk.Frame):
         tool4 = tk.Frame(toolbar, borderwidth=1, relief="raised")
         tool4.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
         btn_refresh = tk.Button(tool4, text='заявки до 25.03.24', bg='#d7d8e0', compound=tk.TOP,
-                                command=self.view_records_old, width=19, font=helv36)
+        command=self.view_records_old, width=19, font=helv36)
         btn_refresh.pack(side=tk.BOTTOM)
+
+        self.is_on = True
         self.enabled = IntVar()
         self.enabled.set(pc_id)
-        # enabled_checkbutton = ttk.Checkbutton(tool4, text="Переключить", variable=self.enabled, onvalue=2, offvalue=1)
-        # enabled_checkbutton.pack(padx=6, pady=6, anchor=NW)
         self.my_label = Label(tool4,
                          text="Мои заявки",
                          fg="grey",
@@ -301,17 +301,23 @@ class Main(tk.Frame):
         self.on_select_city()
 
     def switch(self):
-        # Determine is on or off
-        if self.enabled.get() == 1:
-            self.on_button.config(image=self.off)
-            self.my_label.config(text="Мои заявки", fg="grey")
-            self.enabled.set(2)
-            self.view_records()
-        else:
+        pc = {1, 2}  # Заменил список на множество для использования intersection
+        if self.is_on:
             self.on_button.config(image=self.on)
             self.my_label.config(text="Общие заявки", fg="green")
-            self.enabled.set(1)
+            new_value = (self.enabled.get() % len(pc)) + 1
+            print(new_value)
+            self.enabled.set(new_value)
             self.view_records()
+            self.is_on = False
+        else:
+            self.on_button.config(image=self.off)
+            self.my_label.config(text="Мои заявки", fg="grey")
+            new_value = (self.enabled.get() % len(pc))  + 1
+            print(new_value)
+            self.enabled.set(new_value)
+            self.view_records()
+            self.is_on = True
 
     def view_records_old(self):
         # Добавьте стиль и конфигурацию тега
@@ -1646,13 +1652,12 @@ if __name__ == "__main__":
     address_ = 'adreses.csv'
     fio_dispetchers = 'fio_dispetchers.csv'
     goroda = 'goroda.csv'
+    time_format = "%d.%m.%Y, %H:%M"
 
     root = tk.Tk()
     root.resizable(False, True)
     app = Main(root)
     app.pack()
-    date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%Y, %H:%M")
-    time_format = "%d.%m.%Y, %H:%M"
     root.title("МиТОЛ")
     root.state("zoomed")
     root.iconphoto(False, tk.PhotoImage(file='mitol.png'))
