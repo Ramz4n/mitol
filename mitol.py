@@ -170,7 +170,7 @@ class Main(tk.Frame):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute("select id, ФИО from workers where Должность = 'Механик' order by ФИО")
+                cursor.execute("select id, ФИО from workers where Должность = 'Механик' and id_ЛК = 1 order by ФИО")
                 self.data_meh = cursor.fetchall()
             for d in self.data_meh:
                 self.data_meh_name = f"{d['ФИО']}"
@@ -688,7 +688,7 @@ class Main(tk.Frame):
 
     # ===ЗАПУЩЕННЫЕ ЛИФТЫ==================================================================================
     def start_lift(self):
-        self.tree.tag_configure("Green.Treeview", foreground="#367749")
+        self.tree.tag_configure("Green.Treeview", foreground="#06B206")
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                 cursor = connection.cursor()
@@ -952,7 +952,7 @@ class Main(tk.Frame):
             with closing(
                     mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute("select id, ФИО from workers where Должность = 'Механик'")
+                cursor.execute("select id, ФИО from workers where Должность = 'Механик' and id_ЛК = 1 order by ФИО")
                 self.data_meh = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1294,7 +1294,7 @@ class Child(tk.Toplevel):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute("select ФИО, id from workers where Должность = 'Механик' order by ФИО")
+                cursor.execute("select ФИО, id from workers where Должность = 'Механик' and id_ЛК = 1 order by ФИО")
                 read = cursor.fetchall()
         except mariadb.Error as e:
             showerror('Информация', f"Ошибка при работе с базой данных: {e}")
