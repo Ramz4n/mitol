@@ -1,4 +1,3 @@
-import csv
 from tkinter import ttk
 import tkinter as tk
 from tkinter import filedialog as fd
@@ -12,7 +11,6 @@ from datetime import date, timedelta
 import time
 import pandas as pd
 import subprocess
-import os
 from contextlib import closing
 import fileinput
 from tkcalendar import DateEntry
@@ -195,11 +193,11 @@ class Main(tk.Frame):
         # =================КНОПКИ========================================================
         tool3 = tk.Frame(toolbar, borderwidth=1, relief="raised")
         tool3.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
-        btn_refresh = tk.Button(tool3, text='Запущенные лифты', bg='#B4E2BE', compound=tk.TOP,command=self.start_lift, width=19, font=helv36)
+        btn_refresh = tk.Button(tool3, text='Запущенные лифты', bg='#00AD0E', compound=tk.TOP,command=self.start_lift, width=19, font=helv36)
         btn_refresh.pack(side=tk.BOTTOM)
         btn_refresh = tk.Button(tool3, text='Остановленные лифты', bg='#FFB3AB', compound=tk.TOP,command=self.stop_lift, width=19, font=helv36)
         btn_refresh.pack(side=tk.TOP)
-        btn_refresh = tk.Button(tool3, text='НЕ Закрытые заявки', bg='#FFC830', compound=tk.TOP,command=self.non_start_lift, width=19, font=helv36)
+        btn_refresh = tk.Button(tool3, text='НЕ Закрытые заявки', bg='#4897FF', compound=tk.TOP,command=self.non_start_lift, width=19, font=helv36)
         btn_refresh.pack(side=tk.BOTTOM)
         #=====================================================================================
         tool4 = tk.Frame(toolbar, borderwidth=1, relief="raised")
@@ -567,45 +565,7 @@ class Main(tk.Frame):
         if self.current_month_index == 11:
             self.current_year_index -= 1
             self.year_label.config(text=self.current_year_index)
-        try:
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
-                cursor = connection.cursor()
-                cursor.execute(f'''SELECT z.Номер_заявки,
-                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
-                                   w.ФИО AS Диспетчер,
-                                   g.город AS Город,
-                                   CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                   тип_лифта,
-                                   причина,
-                                   m.ФИО,
-                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
-                                   комментарий,
-                                   z.id
-                            FROM zayavki z
-                            JOIN workers w ON z.id_диспетчер = w.id
-                            JOIN goroda g ON z.id_город = g.id
-                            JOIN street s ON z.id_улица = s.id
-                            JOIN doma d ON z.id_дом = d.id
-                            JOIN padik p ON z.id_подъезд = p.id
-                            JOIN workers m ON z.id_механик = m.id
-                                  WHERE FROM_UNIXTIME(Дата_заявки, '%m') = ?
-                                  and FROM_UNIXTIME(Дата_заявки, '%Y') = ? and z.pc_id = ?''',
-                               (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}', self.enabled.get()))
-                [self.tree.delete(i) for i in self.tree.get_children()]
-                for row in cursor.fetchall():
-                    if row[-3] is None and int((datetime.datetime.strptime(row[1], time_format)).timestamp()) < int(
-                            (time.time()) - 86400):
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
-                    elif row[-3] is None:
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Yellow.Treeview',))
-                    elif row[-3] != None and row[-5] == 'Остановлен':
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Green.Treeview',))
-                    else:
-                        self.tree.insert('', 'end', values=tuple(row))
-                connection.commit()
-                self.tree.yview_moveto(1.0)
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+        self.view_records()
 
     def print_info(self, event):
         self.selected_date = self.calendar.get_date()
@@ -839,13 +799,12 @@ class Main(tk.Frame):
     # ===ФУНКЦИЯ ОБНОВЛЕНИЯ ДАННЫХ В TREEVIEW==========================================
     def view_records(self):
         # Добавьте стиль и конфигурацию тега
-        time_format = "%d.%m.%Y, %H:%M"
         self.current_month_index = int((datetime.datetime.now(tz=None)).strftime("%m")) - 1
         self.current_year_index = int((datetime.datetime.now(tz=None)).strftime("%Y"))
         self.month_label.config(text=self.months[(self.current_month_index) % 12])
         self.year_label.config(text=self.current_year_index)
         self.tree.tag_configure("Red.Treeview", foreground="red")
-        self.tree.tag_configure("Yellow.Treeview", foreground="#FFB200")
+        self.tree.tag_configure("Yellow.Treeview", foreground="#1437FF")
         date_obj = datetime.datetime.now()
         formatted_date = date_obj.strftime('%d.%m.%Y')
         try:
