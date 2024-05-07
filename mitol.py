@@ -38,8 +38,6 @@ class Main(tk.Frame):
         self.view_records()
 
     def init_main(self):
-        self.result_ost = 0
-        self.result_zastr = 0
         m = Menu(root)
         root.config(menu=m)
         fm = Menu(m, font=20)
@@ -85,11 +83,9 @@ class Main(tk.Frame):
             else:
                 lang_btn3.deselect()
         frame3.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
-
         # =======2 ГОРОДА===========================================================================
         toolbar4 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
         toolbar4.pack(side=tk.LEFT, fill=tk.Y)
-        # Получить данные из базы
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
@@ -97,10 +93,8 @@ class Main(tk.Frame):
                 data_towns = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        # Установить значение по умолчанию
         default_town = data_towns[0] if data_towns else ''
         self.var2 = tk.StringVar(value=default_town)
-        # Привязать метод on_select_city к изменению значения переменной
         self.var2.trace("w", self.on_select_city)
         self.label2 = tk.Label(toolbar4, borderwidth=1, width=18, relief="raised", text="Город", font='Calibri 14 bold')
         self.label2.pack(side=tk.TOP, anchor=tk.W)
@@ -205,7 +199,6 @@ class Main(tk.Frame):
         btn_refresh = tk.Button(tool4, text='заявки до 25.03.24', bg='#d7d8e0', compound=tk.TOP,
         command=self.view_records_old, width=19, font=helv36)
         btn_refresh.pack(side=tk.BOTTOM)
-
         self.is_on = True
         self.enabled = IntVar()
         self.enabled.set(pc_id)
@@ -565,7 +558,47 @@ class Main(tk.Frame):
         if self.current_month_index == 11:
             self.current_year_index -= 1
             self.year_label.config(text=self.current_year_index)
-        self.view_records()
+        try:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port,
+                                         database=database)) as connection:
+                cursor = connection.cursor()
+                cursor.execute(f'''SELECT z.Номер_заявки,
+                                   FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                   w.ФИО AS Диспетчер,
+                                   g.город AS Город,
+                                   CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
+                                   тип_лифта,
+                                   причина,
+                                   m.ФИО,
+                                   FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                   комментарий,
+                                   z.id
+                            FROM zayavki z
+                            JOIN workers w ON z.id_диспетчер = w.id
+                            JOIN goroda g ON z.id_город = g.id
+                            JOIN street s ON z.id_улица = s.id
+                            JOIN doma d ON z.id_дом = d.id
+                            JOIN padik p ON z.id_подъезд = p.id
+                            JOIN workers m ON z.id_механик = m.id
+                                  WHERE FROM_UNIXTIME(Дата_заявки, '%m') = ?
+                                  and FROM_UNIXTIME(Дата_заявки, '%Y') = ? and z.pc_id = ?''',
+                               (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}',
+                                self.enabled.get()))
+                [self.tree.delete(i) for i in self.tree.get_children()]
+                for row in cursor.fetchall():
+                    if row[-3] is None and int((datetime.datetime.strptime(row[1], time_format)).timestamp()) < int(
+                            (time.time()) - 86400):
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
+                    elif row[-3] is None:
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Yellow.Treeview',))
+                    elif row[-3] != None and row[-5] == 'Остановлен':
+                        self.tree.insert('', 'end', values=tuple(row), tags=('Green.Treeview',))
+                    else:
+                        self.tree.insert('', 'end', values=tuple(row))
+                connection.commit()
+                self.tree.yview_moveto(1.0)
+        except mariadb.Error as e:
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
     def print_info(self, event):
         self.selected_date = self.calendar.get_date()
