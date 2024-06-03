@@ -378,8 +378,8 @@ class Main(tk.Frame):
         menu.add_command(label="Отметить Время", command=lambda: self.time_to("Отметить Время"))
         menu.add_command(label="Комментировать", command=lambda: self.open_comment("Комментировать"))
         menu.add_command(label="Ложная Заявка", command=lambda: self.lojnaya("Ложная Заявка"))
-        menu.add_command(label="Отсутствие электроэнергии", command=lambda: self.energiya("Отсутствие электроэнергии"))
-        menu.add_command(label="Вандальные действия", command=lambda: self.vandalka("Вандальные действия"))
+        menu.add_command(label="Отсутствие электроэнергии", command=lambda: self.lojnaya("Отсутствие электроэнергии"))
+        menu.add_command(label="Вандальные действия", command=lambda: self.lojnaya("Вандальные действия"))
         menu.add_command(label="------------------------", command=lambda: self.text("--------------"))
         menu.add_command(label="Удалить Заявку", command=lambda: self.delete("Удалить Заявку"))
         menu.post(event.x_root, event.y_root)
@@ -484,13 +484,12 @@ class Main(tk.Frame):
         date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%Y, %H:%M")
         time_obj = datetime.datetime.strptime(date_, time_format)
         unix_time = int(time_obj.timestamp())
-        print(event)
         if self.tree.selection():
             try:
                 with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                     cursor = connection2.cursor()
                     cursor.execute(f'''UPDATE {table_zayavki} set Дата_запуска=?, Комментарий=? WHERE ID=?''',
-                                   [unix_time, 'Ложная заявка', self.tree.set(self.tree.selection()[0], '#11')])
+                                   [unix_time, f'{event}', self.tree.set(self.tree.selection()[0], '#11')])
                     connection2.commit()
             except mariadb.Error as e:
                 showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
