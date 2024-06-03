@@ -378,6 +378,8 @@ class Main(tk.Frame):
         menu.add_command(label="Отметить Время", command=lambda: self.time_to("Отметить Время"))
         menu.add_command(label="Комментировать", command=lambda: self.open_comment("Комментировать"))
         menu.add_command(label="Ложная Заявка", command=lambda: self.lojnaya("Ложная Заявка"))
+        menu.add_command(label="Отсутствие электроэнергии", command=lambda: self.energiya("Отсутствие электроэнергии"))
+        menu.add_command(label="Вандальные действия", command=lambda: self.vandalka("Вандальные действия"))
         menu.add_command(label="------------------------", command=lambda: self.text("--------------"))
         menu.add_command(label="Удалить Заявку", command=lambda: self.delete("Удалить Заявку"))
         menu.post(event.x_root, event.y_root)
@@ -482,6 +484,7 @@ class Main(tk.Frame):
         date_ = (datetime.datetime.now(tz=None)).strftime("%d.%m.%Y, %H:%M")
         time_obj = datetime.datetime.strptime(date_, time_format)
         unix_time = int(time_obj.timestamp())
+        print(event)
         if self.tree.selection():
             try:
                 with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
@@ -533,8 +536,9 @@ class Main(tk.Frame):
                             JOIN doma d ON z.id_дом = d.id
                             JOIN padik p ON z.id_подъезд = p.id
                             JOIN workers m ON z.id_механик = m.id
-                                  WHERE FROM_UNIXTIME(Дата_заявки, '%m') = ?
-                                  and FROM_UNIXTIME(Дата_заявки, '%Y') = ? and z.pc_id = ?''',
+                                WHERE FROM_UNIXTIME(Дата_заявки, '%m') = ?
+                                and FROM_UNIXTIME(Дата_заявки, '%Y') = ? and z.pc_id = ?
+                                order by z.id;''',
                                (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}', self.enabled.get()))
                 [self.tree.delete(i) for i in self.tree.get_children()]
                 for row in cursor.fetchall():
@@ -580,8 +584,9 @@ class Main(tk.Frame):
                             JOIN doma d ON z.id_дом = d.id
                             JOIN padik p ON z.id_подъезд = p.id
                             JOIN workers m ON z.id_механик = m.id
-                                  WHERE FROM_UNIXTIME(Дата_заявки, '%m') = ?
-                                  and FROM_UNIXTIME(Дата_заявки, '%Y') = ? and z.pc_id = ?''',
+                                WHERE FROM_UNIXTIME(Дата_заявки, '%m') = ?
+                                and FROM_UNIXTIME(Дата_заявки, '%Y') = ? and z.pc_id = ?
+                                order by z.id;''',
                                (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}',
                                 self.enabled.get()))
                 [self.tree.delete(i) for i in self.tree.get_children()]
@@ -1017,7 +1022,8 @@ class Main(tk.Frame):
                     JOIN doma ON street.id = doma.улица_id
                     JOIN padik ON doma.id = padik.дом_id
                     JOIN goroda ON street.город_id = goroda.id
-                    WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
+                    WHERE goroda.город = "{self.selected_city}" 
+                    order BY street.улица, doma.`номер`, padik.`номер`''')
                 data_streets = cursor.fetchall()
                 for d in data_streets:
                     address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
@@ -1110,6 +1116,7 @@ class Main(tk.Frame):
                         data_lifts = cursor.fetchall()
                 except mariadb.Error as e:
                     showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+                print(data_lifts)
                 gorod, street, dom, padik, lift_id = data_lifts[0]
                 val = (self.num_request, unix_time, self.selected_disp_id,
                        gorod, street, dom, padik, self.entry4.get(),
