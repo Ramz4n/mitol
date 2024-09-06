@@ -374,18 +374,40 @@ class Main(tk.Frame):
 
     def show_menu(self, event):
         menu = tk.Menu(self.tree, tearoff=False, font=20)
+        settings_menu = tk.Menu(tearoff=False, font=20)
+        settings_menu.add_command(label="ошибка а0", command=lambda: self.error("ошибка а0"))
+        settings_menu.add_command(label="ошибка a2", command=lambda: self.error("ошибка a2"))
+        settings_menu.add_command(label="ошибка 43", command=lambda: self.error("ошибка 43"))
+        settings_menu.add_command(label="ошибка 44", command=lambda: self.error("ошибка 44"))
+        settings_menu.add_command(label="ошибка 45", command=lambda: self.error("ошибка 45"))
+        settings_menu.add_command(label="ошибка 48", command=lambda: self.error("ошибка 48"))
+        settings_menu.add_command(label="ошибка 49", command=lambda: self.error("ошибка 49"))
+        settings_menu.add_command(label="ошибка 50", command=lambda: self.error("ошибка 50"))
+        settings_menu.add_command(label="ошибка 53", command=lambda: self.error("ошибка 53"))
+        settings_menu.add_command(label="ошибка 56", command=lambda: self.error("ошибка 56"))
+        settings_menu.add_command(label="ошибка 67", command=lambda: self.error("ошибка 67"))
+        settings_menu.add_command(label="ошибка 70", command=lambda: self.error("ошибка 70"))
+        settings_menu.add_command(label="ошибка 71", command=lambda: self.error("ошибка 71"))
+        settings_menu.add_command(label="ошибка 96", command=lambda: self.error("ошибка 96"))
+        settings_menu.add_command(label="ошибка 99", command=lambda: self.error("ошибка 99"))
+        settings_menu.add_command(label="Частотник", command=lambda: self.error("Частотник"))
+        settings_menu.add_command(label="Многократный реверс", command=lambda: self.error("Многократный реверс"))
+        settings_menu.add_command(label="Пожарная сигнализация", command=lambda: self.error("Пожарная сигнализация"))
+        settings_menu.add_command(label="До наладчика", command=lambda: self.error("До наладчика"))
+        settings_menu.add_command(label="Ревизия/инспекция", command=lambda: self.error("Лифт в ревизии/инспекции"))
+        settings_menu.add_command(label="Аварийная блокировка", command=lambda: self.error("Аварийная блокировка"))
+        menu.add_cascade(label="Ошибка", command=lambda: self.error("Ошибка"), menu=settings_menu)
         menu.add_command(label="Редактировать", command=lambda: self.edit("Редактировать"))
         menu.add_command(label="Отметить Время", command=lambda: self.time_to("Отметить Время"))
         menu.add_command(label="Комментировать", command=lambda: self.open_comment("Комментировать"))
+        menu.add_separator()
         menu.add_command(label="Ложная Заявка", command=lambda: self.lojnaya("Ложная Заявка"))
-        menu.add_command(label="Отсутствие электроэнергии", command=lambda: self.lojnaya("Отсутствие электроэнергии"))
-        menu.add_command(label="Вандальные действия", command=lambda: self.lojnaya("Вандальные действия"))
-        menu.add_command(label="------------------------", command=lambda: self.text("--------------"))
+        menu.add_command(label="Отсутствие электроэнергии", command=lambda: self.error("Отсутствие электроэнергии"))
+        menu.add_command(label="Вандальные действия", command=lambda: self.error("Вандальные действия"))
+        menu.add_separator()
         menu.add_command(label="Удалить Заявку", command=lambda: self.delete("Удалить Заявку"))
         menu.post(event.x_root, event.y_root)
 
-    def text(self, event):
-        print('text------')
 
     # ===РЕДАКТИРОВАТЬ========================================================================
     def edit(self, event):
@@ -495,6 +517,26 @@ class Main(tk.Frame):
                 showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         else:
             mb.showerror("Ошибка","Строка не выбрана")
+            return
+        self.view_records()
+        msg = f"Запись отредактирована!"
+        mb.showinfo("Информация", msg)
+
+    # ===ОТМЕТИТЬ ОШИБКУ==============================================================================
+    def error(self, event):
+        print(event)
+        if self.tree.selection():
+            try:
+                with closing(mariadb.connect(user=user, password=password, host=host, port=port,
+                                             database=database)) as connection2:
+                    cursor = connection2.cursor()
+                    cursor.execute(f'''UPDATE {table_zayavki} set Комментарий=? WHERE ID=?''',
+                                   [f'{event}', self.tree.set(self.tree.selection()[0], '#11')])
+                    connection2.commit()
+            except mariadb.Error as e:
+                showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+        else:
+            mb.showerror("Ошибка", "Строка не выбрана")
             return
         self.view_records()
         msg = f"Запись отредактирована!"
