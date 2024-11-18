@@ -36,6 +36,7 @@ class Main(tk.Frame):
         root.resizable(False, True)
         self.init_main()
         self.view_records()
+        self.res = 0
 
     def init_main(self):
         m = Menu(root)
@@ -50,7 +51,7 @@ class Main(tk.Frame):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute('''select id, ФИО from workers where Должность="Диспетчер"''')
+                cursor.execute('''select id, ФИО from workers where Должность="Диспетчер" order by ФИО''')
                 data_workers = cursor.fetchall()
         except:
             mb.showerror("Ошибка","Нет подключения к базе данных")
@@ -59,7 +60,7 @@ class Main(tk.Frame):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute(f'''select w.ФИО from zayavki z
-                JOIN workers w ON z.id_диспетчер = w.id where pc_id = {pc_id} ORDER BY z.id DESC LIMIT 1''')
+                JOIN workers w ON z.id_диспетчер = w.id ORDER BY z.id DESC LIMIT 1''')
                 data_worker = cursor.fetchone()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -86,26 +87,58 @@ class Main(tk.Frame):
         # =======2 ГОРОДА===========================================================================
         toolbar4 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
         toolbar4.pack(side=tk.LEFT, fill=tk.Y)
+
         try:
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port,
+                                         database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute("select id, город from goroda")
                 data_towns = cursor.fetchall()
         except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+            messagebox.showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+            return
+
         default_town = data_towns[0] if data_towns else ''
-        self.var2 = tk.StringVar(value=default_town)
+
+        self.label2 = tk.Label(toolbar4, borderwidth=1, width=21, relief="raised", text="Город", font='Calibri 14 bold')
+        self.label2.pack(side=tk.TOP)
+
+        self.canvas = tk.Canvas(toolbar4, width=100)
+        self.scrollbar = ttk.Scrollbar(toolbar4, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.canvas)
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(
+                scrollregion=self.canvas.bbox("all")
+            )
+        )
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        # Привязка событий колесика мыши только к Canvas
+        self.canvas.bind("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind("<Button-4>", self._on_mousewheel)
+        self.canvas.bind("<Button-5>", self._on_mousewheel)
+
+        self.var2 = tk.StringVar(value=default_town['город'] if default_town else '')
         self.var2.trace("w", self.on_select_city)
-        self.label2 = tk.Label(toolbar4, borderwidth=1, width=18, relief="raised", text="Город", font='Calibri 14 bold')
-        self.label2.pack(side=tk.TOP, anchor=tk.W)
-        frame2 = tk.Frame()
-        for d in data_towns:
-            lang_btn4 = tk.Radiobutton(toolbar4, text=d['город'], value=d, variable=self.var2, font='Calibri  13')
-            lang_btn4.pack(anchor=tk.NW, expand=True)
-        frame2.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
+
+        for town in data_towns:
+            radiobutton = tk.Radiobutton(self.scrollable_frame, font=('Calibri', 14), text=town['город'],
+                                         variable=self.var2,
+                                         value=town['город'])
+            radiobutton.pack(anchor="w")
+            radiobutton.bind("<MouseWheel>", self._on_mousewheel)
+            radiobutton.bind("<Button-4>", self._on_mousewheel)
+            radiobutton.bind("<Button-5>", self._on_mousewheel)
         # =======3 БЛОК АДРЕСОВ========================================================================
         toolbar5 = tk.Frame(toolbar2, borderwidth=1, relief="raised")
         toolbar5.pack(side=tk.LEFT, fill=tk.Y)
+
         self.label3 = tk.Label(toolbar5, borderwidth=1, width=21, relief="raised", text="Адрес", font='Calibri 14 bold')
         self.frame3 = tk.Frame()
         self.entry_text3 = tk.StringVar()
@@ -113,9 +146,19 @@ class Main(tk.Frame):
         self.entry3.bind('<KeyRelease>', self.check_input_address)
         self.label3.pack(side=tk.TOP)
         self.entry3.pack(side=tk.TOP, expand=True)
+
         self.listbox_values = tk.Variable()
         self.listbox = tk.Listbox(toolbar5, listvariable=self.listbox_values, width=25, font='Calibri 12')
         self.listbox.bind('<<ListboxSelect>>', self.on_change_selection_address)
+
+        # Создаем горизонтальный скроллбар
+        self.scrollbar_x = tk.Scrollbar(toolbar5, orient=tk.HORIZONTAL)
+        self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+
+        # Связываем скроллбар с Listbox
+        self.listbox.config(xscrollcommand=self.scrollbar_x.set)
+        self.scrollbar_x.config(command=self.listbox.xview)
+
         self.listbox.pack(side=tk.TOP, expand=True)
         self.frame3.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
         # ======4 БЛОК КОД С ТИПАМИ ЛИФТОВ==================================================================
@@ -162,7 +205,7 @@ class Main(tk.Frame):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute("select id, ФИО from workers where Должность = 'Механик' and id_ЛК = 1 order by ФИО")
+                cursor.execute("select id, ФИО from workers where Должность = 'Механик' order by ФИО")
                 self.data_meh = cursor.fetchall()
             for d in self.data_meh:
                 self.data_meh_name = f"{d['ФИО']}"
@@ -196,8 +239,6 @@ class Main(tk.Frame):
         #=====================================================================================
         tool4 = tk.Frame(toolbar, borderwidth=1, relief="raised")
         tool4.pack(side=tk.LEFT, fill=tk.X, anchor=tk.W)
-        btn_refresh = tk.Button(tool4, text='заявки до 25.03.24', bg='#d7d8e0', compound=tk.TOP,
-        command=self.view_records_old, width=19, font=helv36)
         btn_refresh.pack(side=tk.BOTTOM)
         self.is_on = True
         self.enabled = IntVar()
@@ -291,6 +332,12 @@ class Main(tk.Frame):
         self.tree.pack(side="left", fill="both")
         self.on_select_city()
 
+    def _on_mousewheel(self, event):
+        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def on_select_city(self, *args):
+        selected_city = self.var2.get()
+
     def switch(self):
         pc = {1, 2}
         if self.is_on:
@@ -308,66 +355,29 @@ class Main(tk.Frame):
             self.view_records()
             self.is_on = True
 
-    def view_records_old(self):
-        self.current_month_index = int((datetime.datetime.now(tz=None)).strftime("%m")) - 1
-        self.current_year_index = int((datetime.datetime.now(tz=None)).strftime("%Y"))
-        self.month_label.config(text=self.months[(self.current_month_index) % 12])
-        self.year_label.config(text=self.current_year_index)
-        self.tree.tag_configure("Red.Treeview", foreground="red")
-        self.tree.tag_configure("Yellow.Treeview", foreground="yellow")
-        date_obj = datetime.datetime.now()
-        formatted_date = date_obj.strftime('%Y-%m-%d')
-        try:
-            with closing(sqlite3.connect('mitol.db')) as connection2:
-                cursor = connection2.cursor()
-                cursor.execute('''SELECT Номер_заявки,
-                                    strftime('%d.%m.%Y, %H:%M', datetime(Дата_заявки, 'unixepoch')) AS Дата_заявки2,
-                                    Диспетчер,
-                                    Город,
-                                    Адрес,
-                                    Тип_лифта,
-                                    Причина,
-                                    ФИО_механика,
-                                    COALESCE(strftime('%d.%m.%Y, %H:%M', datetime(Дата_запуска, 'unixepoch')), '') AS Дата_запуска2,
-                                    Комментарий,
-                                    id,
-                                    Дата_запуска - Дата_заявки AS Разница,
-                                    Дата_заявки
-                                    FROM balash''')
-                [self.tree.delete(i) for i in self.tree.get_children()]
-                for row in cursor.fetchall():
-                    if row[-5] == "" and row[-1] < int((time.time() + 3 * 60 * 60) - 86400):
-                        self.tree.insert('', 'end', values=tuple(row), tags=('Red.Treeview',))
-                    else:
-                        self.tree.insert('', 'end', values=tuple(row))
-                self.tree.yview_moveto(1.0)
-                connection2.commit()
-        except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        self.print_info(formatted_date)
 #ФУНКЦИЯ ПО ПОЛУЧЕНИЮ ГОРОДА И ДАЛЬНЕЙШЕМУ ПАРСИНГУ АДРЕСОВ В ОКОШКО ПО ГОРОДАМ
     def on_select_city(self, *args):
-        selected_city_str = eval(self.var2.get())
-        self.selected_city_id = selected_city_str['id']
-        self.selected_city = selected_city_str['город']
+        self.selected_city = self.var2.get()
         self.listbox.delete(0, tk.END)
         self.listbox_type.delete(0, tk.END)
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute(f'''
-                    SELECT goroda.id as goroda_id, goroda.город, 
-                    street.id as street_id, street.улица, 
-                    doma.id as doma_id, doma.номер as дом, 
-                    padik.id as padik_id, padik.номер as подъезд
+                    SELECT street.улица,
+                           doma.номер AS дом,
+                           padik.Номер AS падик
                     FROM goroda
-                    JOIN street ON goroda.id = street.город_id
-                    JOIN doma ON street.id = doma.улица_id
-                    JOIN padik ON doma.id = padik.дом_id
-                    WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
+                    JOIN street ON goroda.id = street.id_город
+                    JOIN doma ON street.id = doma.id_улица
+                    JOIN lifts ON doma.id = lifts.id_дом
+                    JOIN padik ON lifts.id_подъезд = padik.id
+                    WHERE goroda.город = "{self.selected_city}"
+                    GROUP BY street.улица, doma.номер, padik.Номер
+                    ORDER BY street.улица, doma.номер, padik.Номер;''')
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
-                    self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
+                    self.address_str = f"{d['улица']}, {d['дом']}, {d['падик']}"
                     self.listbox.insert(tk.END, self.address_str)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -380,19 +390,24 @@ class Main(tk.Frame):
         settings_menu.add_command(label="ошибка 43", command=lambda: self.error("ошибка 43"))
         settings_menu.add_command(label="ошибка 44", command=lambda: self.error("ошибка 44"))
         settings_menu.add_command(label="ошибка 45", command=lambda: self.error("ошибка 45"))
+        settings_menu.add_command(label="ошибка 46", command=lambda: self.error("ошибка 46"))
         settings_menu.add_command(label="ошибка 48", command=lambda: self.error("ошибка 48"))
         settings_menu.add_command(label="ошибка 49", command=lambda: self.error("ошибка 49"))
         settings_menu.add_command(label="ошибка 50", command=lambda: self.error("ошибка 50"))
+        settings_menu.add_command(label="ошибка 52", command=lambda: self.error("ошибка 52"))
         settings_menu.add_command(label="ошибка 53", command=lambda: self.error("ошибка 53"))
         settings_menu.add_command(label="ошибка 56", command=lambda: self.error("ошибка 56"))
+        settings_menu.add_command(label="ошибка 57", command=lambda: self.error("ошибка 57"))
+        settings_menu.add_command(label="ошибка 58", command=lambda: self.error("ошибка 58"))
+        settings_menu.add_command(label="ошибка 59", command=lambda: self.error("ошибка 59"))
+        settings_menu.add_command(label="ошибка 60", command=lambda: self.error("ошибка 60"))
+        settings_menu.add_command(label="ошибка 64", command=lambda: self.error("ошибка 64"))
         settings_menu.add_command(label="ошибка 67", command=lambda: self.error("ошибка 67"))
         settings_menu.add_command(label="ошибка 70", command=lambda: self.error("ошибка 70"))
         settings_menu.add_command(label="ошибка 71", command=lambda: self.error("ошибка 71"))
         settings_menu.add_command(label="ошибка 96", command=lambda: self.error("ошибка 96"))
         settings_menu.add_command(label="ошибка 99", command=lambda: self.error("ошибка 99"))
         settings_menu.add_command(label="Частотник", command=lambda: self.error("Частотник"))
-        settings_menu.add_command(label="Многократный реверс", command=lambda: self.error("Многократный реверс"))
-        settings_menu.add_command(label="Пожарная сигнализация", command=lambda: self.error("Пожарная сигнализация"))
         settings_menu.add_command(label="До наладчика", command=lambda: self.error("До наладчика"))
         settings_menu.add_command(label="Ревизия/инспекция", command=lambda: self.error("Лифт в ревизии/инспекции"))
         settings_menu.add_command(label="Аварийная блокировка", command=lambda: self.error("Аварийная блокировка"))
@@ -403,11 +418,11 @@ class Main(tk.Frame):
         menu.add_separator()
         menu.add_command(label="Ложная Заявка", command=lambda: self.lojnaya("Ложная Заявка"))
         menu.add_command(label="Отсутствие электроэнергии", command=lambda: self.error("Отсутствие электроэнергии"))
+        menu.add_command(label="Пожарная сигнализация", command=lambda: self.error("Пожарная сигнализация"))
         menu.add_command(label="Вандальные действия", command=lambda: self.error("Вандальные действия"))
-        menu.add_separator()
-        menu.add_command(label="Удалить Заявку", command=lambda: self.delete("Удалить Заявку"))
+        #menu.add_separator()
+        #menu.add_command(label="Удалить Заявку", command=lambda: self.delete("Удалить Заявку"))
         menu.post(event.x_root, event.y_root)
-
 
     # ===РЕДАКТИРОВАТЬ========================================================================
     def edit(self, event):
@@ -471,35 +486,33 @@ class Main(tk.Frame):
             except mariadb.Error as e:
                 showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         else:
-            mb.showerror(
-                "Ошибка",
-                "Строка не выбрана")
+            mb.showerror("Ошибка","Строка не выбрана")
             return
         self.view_records()
         msg = f"Время отмечено!"
         mb.showinfo("Информация", msg)
 
     # ===УДАЛЕНИЕ СТРОКИ=====================================================================
-    def delete(self, event):
-        if self.tree.selection():
-            result = askyesno(title="Подтвержение операции", message="УДАЛИТЬ строчку?")
-            if result:
-                try:
-                    with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
-                        cursor = connection2.cursor()
-                        cursor.execute(f'''delete from {table_zayavki} WHERE ID=?''',
-                                       [self.tree.set(self.tree.selection()[0], '#11')])
-                        connection2.commit()
-                except mariadb.Error as e:
-                    showinfo('Информация', f"Ошибка удаления записи: {e}")
-            else:
-                showinfo("Результат", "Операция отменена")
-        else:
-            mb.showerror(
-                "Ошибка",
-                "Строка не выбрана")
-            return
-        self.view_records()
+    # def delete(self, event):
+    #     if self.tree.selection():
+    #         result = askyesno(title="Подтвержение операции", message="УДАЛИТЬ строчку?")
+    #         if result:
+    #             try:
+    #                 with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+    #                     cursor = connection2.cursor()
+    #                     cursor.execute(f'''delete from {table_zayavki} WHERE ID=?''',
+    #                                    [self.tree.set(self.tree.selection()[0], '#11')])
+    #                     connection2.commit()
+    #             except mariadb.Error as e:
+    #                 showinfo('Информация', f"Ошибка удаления записи: {e}")
+    #         else:
+    #             showinfo("Результат", "Операция отменена")
+    #     else:
+    #         mb.showerror(
+    #             "Ошибка",
+    #             "Строка не выбрана")
+    #         return
+    #     self.view_records()
 
     # ===ОТМЕТИТЬ ЛОЖНУЮ==============================================================================
     def lojnaya(self, event):
@@ -524,7 +537,6 @@ class Main(tk.Frame):
 
     # ===ОТМЕТИТЬ ОШИБКУ==============================================================================
     def error(self, event):
-        print(event)
         if self.tree.selection():
             try:
                 with closing(mariadb.connect(user=user, password=password, host=host, port=port,
@@ -877,7 +889,6 @@ class Main(tk.Frame):
 
     # ===ФУНКЦИЯ ОБНОВЛЕНИЯ ДАННЫХ В TREEVIEW==========================================
     def view_records(self):
-        # Добавьте стиль и конфигурацию тега
         self.current_month_index = int((datetime.datetime.now(tz=None)).strftime("%m")) - 1
         self.current_year_index = int((datetime.datetime.now(tz=None)).strftime("%Y"))
         self.month_label.config(text=self.months[(self.current_month_index) % 12])
@@ -889,25 +900,26 @@ class Main(tk.Frame):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                 cursor = connection.cursor()
-                cursor.execute(f'''SELECT z.Номер_заявки,
-                                       FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
-                                       w.ФИО AS Диспетчер,
-                                       g.город AS Город,
-                                       CONCAT(s.улица, ', ', d.номер, ', ', p.номер) AS Адрес,
-                                       тип_лифта,
-                                       причина,
-                                       m.ФИО,
-                                       FROM_UNIXTIME(дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
-                                       комментарий,
-                                       z.id
-                                FROM zayavki z
-                                JOIN workers w ON z.id_диспетчер = w.id
-                                JOIN goroda g ON z.id_город = g.id
-                                JOIN street s ON z.id_улица = s.id
-                                JOIN doma d ON z.id_дом = d.id
-                                JOIN padik p ON z.id_подъезд = p.id
-                                JOIN workers m ON z.id_механик = m.id
-                                WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%m') = ?
+                cursor.execute(f'''SELECT
+                                        z.Номер_заявки,
+                                        FROM_UNIXTIME(z.Дата_заявки, '%d.%m.%Y, %H:%i') AS Дата_заявки,
+                                        w.ФИО AS Диспетчер,
+                                        g.Город AS Город,
+                                        CONCAT(s.Улица, ', ', d.Номер, ', ', p.Номер) AS Адрес,
+                                        z.Тип_лифта,
+                                        z.Причина,
+                                        m.ФИО AS Механик,
+                                        FROM_UNIXTIME(z.Дата_запуска, '%d.%m.%Y, %H:%i') AS Дата_запуска,
+                                        z.Комментарий,
+                                        z.id
+                                    FROM zayavki z
+                                    JOIN workers w ON z.id_диспетчер = w.id
+                                    JOIN goroda g ON z.id_город = g.id
+                                    JOIN street s ON z.id_улица = s.id
+                                    JOIN doma d ON z.id_дом = d.id
+                                    JOIN padik p ON z.id_подъезд = p.id
+                                    JOIN workers m ON z.id_механик = m.id
+                                    WHERE DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%m') = ?
                                 AND DATE_FORMAT(FROM_UNIXTIME(z.Дата_заявки), '%Y') = ? and z.pc_id = ?
                                 order by z.id;''',
                                (f'{str(self.current_month_index + 1).zfill(2)}', f'{str(self.current_year_index)}', self.enabled.get()))
@@ -994,7 +1006,7 @@ class Main(tk.Frame):
             with closing(
                     mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute("select id, ФИО from workers where Должность = 'Механик' and id_ЛК = 1 order by ФИО")
+                cursor.execute("select id, ФИО from workers where Должность = 'Механик' order by ФИО")
                 self.data_meh = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1027,17 +1039,17 @@ class Main(tk.Frame):
             with closing(
                     mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute(f'''SELECT lifts.тип_лифта
+                cursor.execute(f'''SELECT Тип_лифта
                                     FROM lifts
                                     JOIN padik ON lifts.id_подъезд = padik.id
                                     JOIN doma ON lifts.id_дом = doma.id
-                                    JOIN street ON lifts.id_улица = street.id
-                                    JOIN goroda ON lifts.id_город = goroda.id
+                                    JOIN street ON doma.id_улица = street.id
+                                    JOIN goroda ON street.id_город = goroda.id
                                     WHERE goroda.город = "{self.selected_city}" AND street.улица = "{street}"
                                     and doma.номер = "{house}" and padik.номер = "{entrance}" order BY street.улица, doma.`номер`, padik.`номер`''')
                 data_lifts = cursor.fetchall()
                 for lift in data_lifts:
-                    lift_str = f"{lift['тип_лифта']}"
+                    lift_str = f"{lift['Тип_лифта']}"
                     types.append(lift_str)
                     self.listbox_type.insert(tk.END, lift_str)
         except mariadb.Error as e:
@@ -1058,16 +1070,18 @@ class Main(tk.Frame):
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute(f'''
-                    SELECT street.улица, doma.номер as дом, padik.номер as подъезд
-                    FROM street 
-                    JOIN doma ON street.id = doma.улица_id
-                    JOIN padik ON doma.id = padik.дом_id
-                    JOIN goroda ON street.город_id = goroda.id
-                    WHERE goroda.город = "{self.selected_city}" 
-                    order BY street.улица, doma.`номер`, padik.`номер`''')
+                        SELECT street.Улица, doma.Номер AS дом, padik.Номер AS подъезд
+                        FROM street
+                        JOIN doma ON street.id = doma.id_улица
+                        JOIN lifts ON doma.id = lifts.id_дом
+                        JOIN padik ON lifts.id_подъезд = padik.id
+                        JOIN goroda ON street.id_город = goroda.id
+                        WHERE goroda.Город = '{self.selected_city}'
+                        group BY street.`Улица`, doma.`Номер`, padik.`Номер`
+						ORDER BY street.`Улица`, doma.`Номер`, padik.`Номер`''')
                 data_streets = cursor.fetchall()
                 for d in data_streets:
-                    address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
+                    address_str = f"{d['Улица']}, {d['дом']}, {d['подъезд']}"
                     names.append(address_str)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1096,6 +1110,16 @@ class Main(tk.Frame):
             self.entry_text3.set(self.data3)
             self.check_input_address()
         self.check_input_lifts()
+
+    # ===ВСТАВКА ГОРОДА ИЗ ПАРСИНГА В ЛИСТБОКС=============================
+    def on_change_selection_town(self, event):
+        self.selection = event.widget.curselection()
+        if self.selection:
+            self.index2 = self.selection[0]
+            self.data2 = event.widget.get(self.index2)
+            self.entry_text2.set(self.data2)
+            self.check_input_town()
+        #self.check_input_lifts()
 
     def create_combobox(self, combo_text, town):
         frame = ttk.Frame(borderwidth=1, relief=SOLID, padding=[8, 10])
@@ -1135,11 +1159,11 @@ class Main(tk.Frame):
                 cursor.execute(f"SELECT COALESCE(MAX(Номер_заявки), 0) FROM {table_zayavki} WHERE DATE_FORMAT(FROM_UNIXTIME("
                     f"Дата_заявки), '%Y-%m') = ?",
                     ((datetime.datetime.now()).strftime('%Y-%m'),))
-                res = cursor.fetchone()[0]
-                if res is None:
+                self.res = cursor.fetchone()[0]
+                if self.res is None:
                     self.num_request = 1
                 else:
-                    self.num_request = res + 1
+                    self.num_request = self.res + 1
                 #===========================================
                 data = self.entry_text3.get()
                 parts = data.split(',')
@@ -1150,18 +1174,17 @@ class Main(tk.Frame):
                                                 FROM lifts
                                                 JOIN padik ON lifts.id_подъезд = padik.id
                                                 JOIN doma ON lifts.id_дом = doma.id
-                                                JOIN street ON lifts.id_улица = street.id
-                                                JOIN goroda ON lifts.id_город = goroda.id
+                                                JOIN street ON doma.id_улица = street.id
+                                                JOIN goroda ON street.id_город = goroda.id
                                                 WHERE goroda.город = "{self.selected_city}" AND street.улица = "{parts[0].strip()}" AND doma.номер = "{parts[1].strip()}" 
                                                 AND padik.номер = "{parts[2].strip()}" and тип_лифта="{self.entry_text4.get()}";''')
                         data_lifts = cursor.fetchall()
                 except mariadb.Error as e:
                     showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-                print(data_lifts)
                 gorod, street, dom, padik, lift_id = data_lifts[0]
                 val = (self.num_request, unix_time, self.selected_disp_id,
                        gorod, street, dom, padik, self.entry4.get(),
-                    self.prich5.get(), self.selected_meh_id, None, '', lift_id, pc_id)
+                    self.prich5.get(), None, self.selected_meh_id, '', lift_id, pc_id)
                 try:
                     with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection:
                         cursor = connection.cursor()
@@ -1175,18 +1198,18 @@ class Main(tk.Frame):
                                         id_подъезд,
                                         тип_лифта,
                                         Причина,
-                                        id_Механик,
                                         Дата_запуска,
+                                        id_Механик,
                                         Комментарий,
                                         id_Лифт,
                                         pc_id) 
                                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''',(val))
                         connection.commit()
                 except mariadb.Error as e:
-                    showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+                    showinfo('Информация', f"Ошибка при работе с базой данных123: {e}")
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        msg = f"Запись успешно добавлена! Её порядковый номер - {res + 1}"
+        msg = f"Запись успешно добавлена! Её порядковый номер - {self.res + 1}"
         mb.showinfo("Информация", msg)
         self.view_records()
         self.obnov()
@@ -1218,24 +1241,24 @@ class Child(tk.Toplevel):
         font10 = tkFont.Font(family='Helvetica', size=10, weight=tkFont.BOLD)
         font12 = tkFont.Font(family='Helvetica', size=12, weight=tkFont.BOLD)
 
-        label_select = tk.Label(self, text='Дата заявки:', font=font12)
-        label_select.place(x=20, y=50)
-        label_sum = tk.Label(self, text='Диспетчер:', font=font12)
-        label_sum.place(x=20, y=80)
-        label_select = tk.Label(self, text='Город:', font=font12)
-        label_select.place(x=20, y=110)
-        label_sum = tk.Label(self, text='Адрес:', font=font12)
-        label_sum.place(x=20, y=140)
-        label_sum = tk.Label(self, text='Тип лифта:', font=font12)
-        label_sum.place(x=20, y=170)
-        label_sum = tk.Label(self, text='Причина остановки:', font=font12)
-        label_sum.place(x=20, y=200)
-        label_sum = tk.Label(self, text='ФИО механика:', font=font12)
-        label_sum.place(x=20, y=230)
-        label_sum = tk.Label(self, text='Дата запуска:', font=font12)
-        label_sum.place(x=20, y=260)
-        label_sum = tk.Label(self, text='Комментарий:', font=font12)
-        label_sum.place(x=20, y=290)
+        label_data1 = tk.Label(self, text='Дата заявки:', font=font12)
+        label_data1.place(x=20, y=50)
+        label_fio_disp = tk.Label(self, text='Диспетчер:', font=font12)
+        label_fio_disp.place(x=20, y=80)
+        label_town = tk.Label(self, text='Город:', font=font12)
+        label_town.place(x=20, y=110)
+        label_adres = tk.Label(self, text='Адрес:', font=font12)
+        label_adres.place(x=20, y=140)
+        label_type_lift = tk.Label(self, text='Тип лифта:', font=font12)
+        label_type_lift.place(x=20, y=170)
+        label_stop = tk.Label(self, text='Причина остановки:', font=font12)
+        label_stop.place(x=20, y=200)
+        label_fio_meh = tk.Label(self, text='ФИО механика:', font=font12)
+        label_fio_meh.place(x=20, y=230)
+        label_data2 = tk.Label(self, text='Дата запуска:', font=font12)
+        label_data2.place(x=20, y=260)
+        label_comment = tk.Label(self, text='Комментарий:', font=font12)
+        label_comment.place(x=20, y=290)
 #===============================================================================================
         self.text_entry_data = tk.StringVar(value=self.rows[0]['Дата_заявки'])
         self.calen1 = tk.Entry(self, textvariable=self.text_entry_data, font=font10)
@@ -1280,24 +1303,31 @@ class Child(tk.Toplevel):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute(f'''SELECT goroda.id as goroda_id, goroda.город, 
-                    CONCAT(street.улица, ', ', doma.номер, ', ', padik.номер) as Адрес,
-                    street.id as street_id, street.улица as улица,
-                    doma.id as doma_id, doma.номер as дом, 
-                    padik.id as padik_id, padik.номер as подъезд
-                    FROM goroda
-                    JOIN street ON goroda.id = street.город_id
-                    JOIN doma ON street.id = doma.улица_id
-                    JOIN padik ON doma.id = padik.дом_id
-                    WHERE goroda.город = "{self.combobox_town.get()}"
-                    order by street.улица, doma.номер, padik.номер''')
-                adreses = cursor.fetchall()
+                cursor.execute(f'''SELECT
+                                    goroda.id as goroda_id,
+                                    goroda.город,
+                                    CONCAT(street.улица, ', ', doma.номер, ', ', padik.номер) as Адрес,
+                                    street.id as street_id,
+                                    street.улица as улица,
+                                    doma.id as doma_id,
+                                    doma.номер as дом,
+                                    padik.id as padik_id,
+                                    padik.номер as подъезд
+                                FROM goroda
+                                JOIN street ON goroda.id = street.id_город
+                                JOIN doma ON street.id = doma.id_улица
+                                JOIN lifts ON doma.id = lifts.id_дом
+                                JOIN padik ON lifts.id_подъезд = padik.id
+                                WHERE goroda.город = '{self.combobox_town.get()}'
+                                group BY street.`Улица`, doma.`Номер`, padik.`Номер`
+                                ORDER BY street.улица, doma.номер, padik.номер;''')
+                self.adreses = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        self.street_to_id = {i['улица']: i['street_id'] for i in adreses}
-        self.house_to_id = {i['дом']: i['doma_id'] for i in adreses}
-        self.padik_to_id = {i['подъезд']: i['padik_id'] for i in adreses}
-        adres_list = [i['Адрес'] for i in adreses]
+        self.street_to_id = {i['улица']: i['street_id'] for i in self.adreses}
+        self.house_to_id = {i['дом']: i['doma_id'] for i in self.adreses}
+        self.padik_to_id = {i['подъезд']: i['padik_id'] for i in self.adreses}
+        adres_list = [i['Адрес'] for i in self.adreses]
         self.selected_address = tk.StringVar(value=self.rows[0]['Адрес'])
         self.address_combobox = ttk.Combobox(self, textvariable=self.selected_address, font=font10, width=30)
         adres_list.insert(0, self.rows[0]['Адрес'])
@@ -1317,8 +1347,8 @@ class Child(tk.Toplevel):
                                     FROM lifts
                                     JOIN padik ON lifts.id_подъезд = padik.id
                                     JOIN doma ON lifts.id_дом = doma.id
-                                    JOIN street ON lifts.id_улица = street.id
-                                    JOIN goroda ON lifts.id_город = goroda.id
+                                    JOIN street ON doma.id_улица = street.id
+                                    JOIN goroda ON street.id_город = goroda.id
                                     WHERE goroda.город = "{self.combobox_town.get()}" AND street.улица = "{self.street}"
                                     and doma.номер = "{self.house}" and padik.номер = "{self.entrance}"''')
                 data_lifts = cursor.fetchall()
@@ -1337,10 +1367,10 @@ class Child(tk.Toplevel):
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute("select ФИО, id from workers where Должность = 'Механик' and id_ЛК = 1 order by ФИО")
+                cursor.execute("select ФИО, id from workers where Должность = 'Механик' order by ФИО")
                 read = cursor.fetchall()
         except mariadb.Error as e:
-            showerror('Информация', f"Ошибка при работе с базой данных: {e}")
+            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
         self.meh_to_id = {i['ФИО']: i['id'] for i in read}
         meh = [i['ФИО'] for i in read]
         m1 = [j for j in meh]
@@ -1376,15 +1406,17 @@ class Child(tk.Toplevel):
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute(f'''SELECT CONCAT(street.улица, ', ', CAST(doma.номер AS CHAR), ', ', CAST(padik.номер AS CHAR)) AS Адрес
                     FROM goroda
-                    JOIN street ON goroda.id = street.город_id
-                    JOIN doma ON street.id = doma.улица_id
-                    JOIN padik ON doma.id = padik.дом_id
+                    JOIN street ON goroda.id = street.id_город
+                    JOIN doma ON street.id = doma.id_улица
+                    JOIN lifts ON doma.id = lifts.id_дом
+                    JOIN padik ON lifts.id_подъезд = padik.id
                     WHERE goroda.город = "{self.combobox_town.get()}"
+                    group BY street.`Улица`, doma.`Номер`, padik.`Номер`
                     order by street.улица, doma.номер, padik.номер''')
-                adreses = cursor.fetchall()
+                self.adreses = cursor.fetchall()
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        self.add_adres = [adres['Адрес'] for adres in adreses]
+        self.add_adres = [adres['Адрес'] for adres in self.adreses]
         # Обновление значений комбобокса с типами лифтов
         self.address_combobox['values'] = self.add_adres
         # Сбрасываем текущее выбранное значение типа лифта
@@ -1401,8 +1433,8 @@ class Child(tk.Toplevel):
                                 FROM lifts
                                 JOIN padik ON lifts.id_подъезд = padik.id
                                 JOIN doma ON lifts.id_дом = doma.id
-                                JOIN street ON lifts.id_улица = street.id
-                                JOIN goroda ON lifts.id_город = goroda.id
+                                JOIN street ON doma.id_улица = street.id
+                                JOIN goroda ON street.id_город = goroda.id
                                 WHERE goroda.город = "{self.combobox_town.get()}" AND street.улица = "{self.street}"
                                 and doma.номер = "{self.house}" and padik.номер = "{self.entrance}"''')
                 data_lifts = cursor.fetchall()
@@ -1440,9 +1472,11 @@ class Child(tk.Toplevel):
         return selected_meh_id
 
     def save_and_close(self):
-        adres_id = self.get_selected_adres_id()
-        if not adres_id or adres_id == 'ВЫБРАТЬ АДРЕС':
-            mb.showerror("Ошибка", "Выберите адрес")
+        if self.get_selected_adres_id() == 'ВЫБРАТЬ АДРЕС' or self.selected_type.get() == 'ВЫБРАТЬ ЛИФТ':
+            mb.showerror("Ошибка", "Вы не выбрали АДРЕС или ТИП ЛИФТА")
+            return
+        elif self.get_selected_meh_id() == '':
+            mb.showerror("Ошибка", "Вы не выбрали ФИО механика")
             return
 
         self.view.update_record(
@@ -1468,66 +1502,120 @@ class Search(tk.Toplevel):
 
     def init_search(self):
         self.title('Поиск')
-        self.geometry('600x350+400+300')
+        self.geometry('600x400+400+300')
         self.resizable(False, False)
+        self.wm_attributes('-topmost', 1)
+        self.bind('<Unmap>', self.on_unmap)
+
+        toolbar4 = tk.Frame(self, borderwidth=1, relief="raised")
+        toolbar4.pack(side=tk.LEFT, fill=tk.Y)
+
         try:
-            with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
+            with closing(mariadb.connect(user=user, password=password, host=host, port=port,
+                                         database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
                 cursor.execute("select id, город from goroda")
                 data_towns = cursor.fetchall()
         except mariadb.Error as e:
-            showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
-        # Установить значение по умолчанию
+            messagebox.showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
+            return
+
         default_town = data_towns[0] if data_towns else ''
-        self.var2 = tk.StringVar(value=default_town)
-        # Привязать метод on_select_city к изменению значения переменной
+
+        self.label2 = tk.Label(toolbar4, borderwidth=1, width=21, relief="raised", text="Город", font='Calibri 14 bold')
+        self.label2.pack(side=tk.TOP)
+
+        self.canvas = tk.Canvas(toolbar4, width=100)
+        self.scrollbar = ttk.Scrollbar(toolbar4, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.canvas)
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(
+                scrollregion=self.canvas.bbox("all")
+            )
+        )
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        # Привязка событий колесика мыши только к Canvas
+        self.canvas.bind("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind("<Button-4>", self._on_mousewheel)
+        self.canvas.bind("<Button-5>", self._on_mousewheel)
+
+        self.var2 = tk.StringVar(value=default_town['город'] if default_town else '')
         self.var2.trace("w", self.on_select_city)
-        self.label2 = tk.Label(self, text="Город", font='Calibri 14 bold')
-        self.label2.pack(side=tk.TOP, anchor=tk.W)
-        frame2 = tk.Frame()
-        for d in data_towns:
-            lang_btn4 = tk.Radiobutton(self, text=d['город'], value=d, variable=self.var2, font='Calibri  13')
-            lang_btn4.pack(side=tk.TOP, anchor=tk.NW, padx=0, pady=0, fill='y')
-        frame2.pack(side=tk.LEFT, anchor=tk.NW, expand=True)
+
+        for town in data_towns:
+            radiobutton = tk.Radiobutton(self.scrollable_frame, font=('Calibri', 14), text=town['город'],
+                                         variable=self.var2,
+                                         value=town['город'])
+            radiobutton.pack(anchor="w")
+            radiobutton.bind("<MouseWheel>", self._on_mousewheel)
+            radiobutton.bind("<Button-4>", self._on_mousewheel)
+            radiobutton.bind("<Button-5>", self._on_mousewheel)
 #================================================================================================================
-        label_adres = ttk.Label(self, text='Адрес', font='Calibri 14 bold')
-        label_adres.place(x=170, y=0)
-        label_data = ttk.Label(self, text='Дата', font='Calibri 14 bold')
-        label_data.place(x=420, y=0)
-        label_c = ttk.Label(self, text='с', font='Calibri 15 bold')
-        label_c.place(x=390, y=40)
-        self.calendar1 = DateEntry(self, locale='ru_RU', font=1)
+        toolbar5 = tk.Frame(self, borderwidth=1, relief="raised")
+        toolbar5.pack(side=tk.LEFT, fill=tk.Y)
+        label_adres = tk.Label(toolbar5, borderwidth=1, relief='raised', width=21, text='Адрес', font='Calibri 14 bold')
+        label_adres.pack(side=tk.TOP)
+
+        toolbar6 = tk.Frame(self, borderwidth=1, relief="raised")
+        toolbar6.pack(side=tk.LEFT, fill=tk.Y)
+        label_data = tk.Label(toolbar6, borderwidth=1, relief='raised', width=21, text='Дата', font='Calibri 14 bold')
+        label_data.pack()
+        label_c = tk.Label(toolbar6, text='с', font='Calibri 15 bold')
+        label_c.pack()
+        self.calendar1 = DateEntry(toolbar6, locale='ru_RU', font=1)
         self.calendar1.bind("<<DateEntrySelected>>")
-        self.calendar1.place(x=420, y=40)
-        label_po = ttk.Label(self, text='по', font='Calibri 15 bold')
-        label_po.place(x=380, y=90)
-        self.calendar2 = DateEntry(self, locale='ru_RU', font=1)
+        self.calendar1.pack()
+        label_po = tk.Label(toolbar6, text='по', font='Calibri 15 bold')
+        label_po.pack()
+        self.calendar2 = DateEntry(toolbar6, locale='ru_RU', font=1)
         self.calendar2.bind("<<DateEntrySelected>>")
-        self.calendar2.place(x=420, y=90)
+        self.calendar2.pack()
+
         self.frame11 = tk.Frame(borderwidth=1)
         self.entry_text11 = tk.StringVar()
-        self.entry11 = tk.Entry(self, textvariable=self.entry_text11, width=33)
+        self.entry11 = tk.Entry(toolbar5, textvariable=self.entry_text11, width=33)
         self.entry11.bind('<KeyRelease>', self.check_input_11)
-        self.entry11.place(x=170, y=40)
+        self.entry11.pack()
         self.listbox_values11 = tk.Variable()
-        self.listbox11 = tk.Listbox(self, listvariable=self.listbox_values11, width=25, font='Calibri 12')
+
+        # Создаем горизонтальный скроллбар
+        self.scrollbar_x = tk.Scrollbar(toolbar5, orient=tk.HORIZONTAL)
+        self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+
+        self.listbox11 = tk.Listbox(toolbar5, listvariable=self.listbox_values11, height=15, width=25, font='Calibri 12')
         self.listbox11.bind('<<ListboxSelect>>', self.on_change_selection_11)
-        self.listbox11.place(x=170, y=90)
-        selected_city_str = eval(self.var2.get())
-        self.selected_city_id = selected_city_str['id']
-        self.selected_city = selected_city_str['город']
+        self.listbox11.pack()
+        # Связываем скроллбар с Listbox
+        self.listbox11.config(xscrollcommand=self.scrollbar_x.set)
+        self.scrollbar_x.config(command=self.listbox11.xview)
+        self.selected_city = self.var2.get()
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute(f'''SELECT goroda.id as goroda_id, goroda.город, 
-                    street.id as street_id, street.улица, 
-                    doma.id as doma_id, doma.номер as дом, 
-                    padik.id as padik_id, padik.номер as подъезд
-                    FROM goroda
-                    JOIN street ON goroda.id = street.город_id
-                    JOIN doma ON street.id = doma.улица_id
-                    JOIN padik ON doma.id = padik.дом_id
-                    WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
+                cursor.execute(f'''SELECT
+                                            goroda.id as goroda_id,
+                                            goroda.город,
+                                            street.id as street_id,
+                                            street.улица,
+                                            doma.id as doma_id,
+                                            doma.номер as дом,
+                                            padik.id as padik_id,
+                                            padik.номер as подъезд
+                                        FROM goroda
+                                        JOIN street ON goroda.id = street.id_город
+                                        JOIN doma ON street.id = doma.id_улица
+                                        JOIN lifts ON doma.id = lifts.id_дом
+                                        JOIN padik ON lifts.id_подъезд = padik.id
+                                        WHERE goroda.город = '{self.selected_city}'
+                                        GROUP BY street.улица, doma.номер, padik.номер
+                                        ORDER BY street.улица, doma.номер, padik.номер;''')
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
                     self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
@@ -1540,61 +1628,78 @@ class Search(tk.Toplevel):
         style.configure("Green.TButton", foreground="green", background="#50C878", font='Calibri 12')
         # Создаем стиль для кнопки "Закрыть" с красным цветом
         style.configure("Red.TButton", foreground="red", background="#FCA195", font='Calibri 12')
-        # Создание и размещение кнопки "Поиск" большого размера слева снизу
-        btn_search = ttk.Button(self, text='Поиск', style="Green.TButton", command=self.destroy)
-        btn_search.place(x=0, y=300, width=300, height=50)  # Установить координаты, ширину и высоту
+        toolbar7 = tk.Frame(toolbar6, borderwidth=1, relief="raised")
+        toolbar7.pack(side=tk.BOTTOM, fill=tk.Y)
         # Создание и размещение кнопки "Закрыть" большого размера справа снизу
-        btn_cancel = ttk.Button(self, text='Закрыть', command=self.destroy, style="Red.TButton")
-        btn_cancel.place(x=300, y=300, width=300, height=50)  # Установить координаты, ширину и высоту
+        btn_cancel = ttk.Button(toolbar7, text='Закрыть', style="Red.TButton", command=self.destroy, width=20)
+        btn_cancel.pack(side=tk.BOTTOM)  # Установить координаты, ширину и высоту
+        # Создание и размещение кнопки "Поиск" большого размера слева снизу
+        btn_search = ttk.Button(toolbar7, text='Поиск', style="Green.TButton", command=self.destroy, width=20)
+        btn_search.pack(side=tk.BOTTOM)  # Установить координаты, ширину и высоту
         btn_search.bind('<Button-1>', lambda event: (self.view.search_records(self.var2, self.entry11.get(), self.calendar1.get(), self.calendar2.get())))
 
+    def on_unmap(self, event):
+        self.deiconify()  # Отменяем сворачивание дочернего окна
+
+    def deiconify(self):
+        if self.state() == 'iconic':
+            self.state('normal')
+
+    def _on_mousewheel(self, event):
+        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
     def on_select_city(self, *args):
-        selected_city_str = eval(self.var2.get())
-        self.selected_city_id = selected_city_str['id']
-        self.selected_city = selected_city_str['город']
+        selected_city = self.var2.get()
+
+    # def _on_mousewheel(self, event):
+    #     if event.num == 4 or event.delta > 0:
+    #         self.canvas.yview_scroll(-1, "units")
+    #     elif event.num == 5 or event.delta < 0:
+    #         self.canvas.yview_scroll(1, "units")
+
+    def on_select_city(self, *args):
+        self.selected_city = self.var2.get()
         # Очистить Listbox перед добавлением новых улиц
         self.listbox11.delete(0, tk.END)
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute(f'''SELECT goroda.id as goroda_id, goroda.город, 
-                    street.id as street_id, street.улица, 
-                    doma.id as doma_id, doma.номер as дом, 
-                    padik.id as padik_id, padik.номер as подъезд
-                    FROM goroda
-                    JOIN street ON goroda.id = street.город_id
-                    JOIN doma ON street.id = doma.улица_id
-                    JOIN padik ON doma.id = padik.дом_id
-                    WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
+                cursor.execute(f'''SELECT street.Улица, doma.Номер AS дом, padik.Номер AS подъезд
+                        FROM street
+                        JOIN doma ON street.id = doma.id_улица
+                        JOIN lifts ON doma.id = lifts.id_дом
+                        JOIN padik ON lifts.id_подъезд = padik.id
+                        JOIN goroda ON street.id_город = goroda.id
+                        WHERE goroda.Город = '{self.selected_city}'
+                        group BY street.`Улица`, doma.`Номер`, padik.`Номер`
+						ORDER BY street.`Улица`, doma.`Номер`, padik.`Номер`''')
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
-                    self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"
+                    self.address_str = f"{d['Улица']}, {d['дом']}, {d['подъезд']}"
                     self.listbox11.insert(tk.END, self.address_str)
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
 
         # =========================================================================
     def check_input_11(self, _event=None):
-        selected_city_str = eval(self.var2.get())
-        self.selected_city_id = selected_city_str['id']
-        self.selected_city = selected_city_str['город']
+        self.selected_city = self.var2.get()
         value = self.entry_text11.get().lower()
         names = []
         try:
             with closing(mariadb.connect(user=user, password=password, host=host, port=port, database=database)) as connection2:
                 cursor = connection2.cursor(dictionary=True)
-                cursor.execute(f'''SELECT goroda.id as goroda_id, goroda.город, 
-                    street.id as street_id, street.улица, 
-                    doma.id as doma_id, doma.номер as дом, 
-                    padik.id as padik_id, padik.номер as подъезд
-                    FROM goroda
-                    JOIN street ON goroda.id = street.город_id
-                    JOIN doma ON street.id = doma.улица_id
-                    JOIN padik ON doma.id = padik.дом_id
-                    WHERE goroda.город = "{self.selected_city}" order BY street.улица, doma.`номер`, padik.`номер`''')
+                cursor.execute(f'''SELECT street.Улица, doma.Номер AS дом, padik.Номер AS подъезд
+                        FROM street
+                        JOIN doma ON street.id = doma.id_улица
+                        JOIN lifts ON doma.id = lifts.id_дом
+                        JOIN padik ON lifts.id_подъезд = padik.id
+                        JOIN goroda ON street.id_город = goroda.id
+                        WHERE goroda.Город = '{self.selected_city}'
+                        group BY street.`Улица`, doma.`Номер`, padik.`Номер`
+						ORDER BY street.`Улица`, doma.`Номер`, padik.`Номер`''')
                 self.data_streets = cursor.fetchall()
                 for d in self.data_streets:
-                    self.address_str = f"{d['улица']}, {d['дом']}, {d['подъезд']}"  # Парсим адреса из файла
+                    self.address_str = f"{d['Улица']}, {d['дом']}, {d['подъезд']}"  # Парсим адреса из файла
                     names.append(''.join(self.address_str).strip())
         except mariadb.Error as e:
             showinfo('Информация', f"Ошибка при работе с базой данных: {e}")
@@ -1680,7 +1785,6 @@ if __name__ == "__main__":
     table_doma = data['table_doma']
     table_padik = data['table_padik']
     table_lifts = data['table_lifts']
-    table_lifts_company = data['table_lifts_company']
     table_uk = data['table_uk']
     table_zayavki = data['table_zayavki']
     table_workers = data['table_workers']
@@ -1692,11 +1796,10 @@ if __name__ == "__main__":
     time_format = "%d.%m.%Y, %H:%M"
 
     root = tk.Tk()
-    root.resizable(False, True)
     app = Main(root)
     app.pack()
     root.title("МиТОЛ")
-    root.state("zoomed")
+    root.geometry("1920x1080")
     root.iconphoto(False, tk.PhotoImage(file='mitol.png'))
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
     root.mainloop()
